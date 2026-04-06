@@ -22,6 +22,10 @@ public class MedicationReferenceService {
         return medicationReferenceRepository.findByDrugNameContainingIgnoreCaseAndIsValid(keyword.trim(), 1);
     }
 
+    public List<DrugBase> getDrugs() {
+        return medicationReferenceRepository.findAll();
+    }
+
     public DrugBase getDrugById(Long drugId) {
         return medicationReferenceRepository.findByDrugId(drugId)
                 .orElseThrow(() -> new RuntimeException("Drug not found"));

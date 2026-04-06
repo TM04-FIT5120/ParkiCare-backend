@@ -22,6 +22,11 @@ public class MedicationReferenceController {
         return medicationReferenceService.searchDrugs(keyword);
     }
 
+    @GetMapping("/getAll")
+    public List<DrugBase> getAll() {
+        return medicationReferenceService.getDrugs();
+    }
+
     @GetMapping("/{drugId}")
     public DrugBase getDrugById(@PathVariable Long drugId) {
         return medicationReferenceService.getDrugById(drugId);
