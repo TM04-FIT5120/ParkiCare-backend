@@ -20,11 +20,12 @@ public class MedicationPlanService {
     }
 
     @Transactional
-    public List<MedicationPlan> createMedicationPlan(Long patientId,
+    public MedicationPlan createMedicationPlan(Long patientId,
                                                      Long drugId,
                                                      String dosage,
                                                      String frequency,
-                                                     List<LocalTime> adminTimes,
+                                                     LocalTime adminTimes,
+                                                     LocalTime remindTime,
                                                      LocalDate startDate,
                                                      String planNote) {
         if (patientId == null) {
@@ -39,7 +40,7 @@ public class MedicationPlanService {
         if (frequency == null || frequency.trim().isEmpty()) {
             throw new RuntimeException("Frequency cannot be empty");
         }
-        if (adminTimes == null || adminTimes.isEmpty()) {
+        if (adminTimes == null) {
             throw new RuntimeException("At least one administration time is required");
         }
         if (startDate == null) {
@@ -49,17 +50,15 @@ public class MedicationPlanService {
         Long maxPlanId = medicationReminderRepository.findMaxPlanId();
         long nextPlanId = (maxPlanId == null) ? 1L : maxPlanId + 1L;
 
-        List<MedicationPlan> result = new ArrayList<>();
-
-        for (LocalTime adminTime : adminTimes) {
+        MedicationPlan medicationPlan=new MedicationPlan();
             MedicationPlan plan = new MedicationPlan();
             plan.setPlanId(nextPlanId);
             plan.setPatientId(patientId);
             plan.setDrugId(drugId);
             plan.setDosage(dosage.trim());
             plan.setFrequency(frequency.trim());
-            plan.setAdminTime(adminTime);
-            plan.setRemindTime(adminTime);
+            plan.setAdminTime(adminTimes);
+            plan.setRemindTime(remindTime);
             plan.setStartDate(startDate);
             plan.setIsOverdue(0);
             plan.setSnoozeTime(null);
@@ -67,10 +66,10 @@ public class MedicationPlanService {
             plan.setIsValid(1);      // 1 = valid / pending
             plan.setPlanNote(planNote);
 
-            result.add(medicationReminderRepository.save(plan));
-        }
+            medicationReminderRepository.save(plan);
 
-        return result;
+
+        return medicationPlan;
     }
 
     public List<MedicationPlan> getPlansByPatient(Long patientId) {

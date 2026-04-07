@@ -23,7 +23,10 @@ public class MedicationPlanRequest {
 
     // 例如 ["08:00", "12:00", "20:00"]
     @NotEmpty(message = "At least one administration time is required")
-    private List<String> adminTimes;
+    private String adminTimes;
+
+    @NotNull(message = "remindTime date cannot be null")
+    private String remindTime;
 
     // 格式：2026-04-06
     @NotNull(message = "Start date cannot be null")

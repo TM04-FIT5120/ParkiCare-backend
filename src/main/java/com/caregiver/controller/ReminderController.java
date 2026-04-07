@@ -27,27 +27,21 @@ public class ReminderController {
     }
 
     @PostMapping("/plan")
-    public List<MedicationPlanResponse> createMedicationPlan(
+    public MedicationPlan createMedicationPlan(
             @Valid @RequestBody MedicationPlanRequest request) {
 
-        List<LocalTime> timeList = request.getAdminTimes()
-                .stream()
-                .map(LocalTime::parse)
-                .toList();
-
-        List<MedicationPlan> plans = medicationPlanService.createMedicationPlan(
+                MedicationPlan medicationPlan= medicationPlanService.createMedicationPlan(
                 request.getPatientId(),
                 request.getDrugId(),
                 request.getDosage(),
                 request.getFrequency(),
-                timeList,
+                LocalTime.parse(request.getAdminTimes()),
+                LocalTime.parse(request.getRemindTime()),
                 LocalDate.parse(request.getStartDate()),
                 request.getPlanNote()
         );
 
-        return plans.stream()
-                .map(this::convertToResponse)
-                .toList();
+        return medicationPlan;
     }
 
     @GetMapping("/patient/{patientId}")
