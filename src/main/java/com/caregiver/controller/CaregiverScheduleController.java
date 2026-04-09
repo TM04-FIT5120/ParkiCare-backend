@@ -9,7 +9,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 
 @RestController
-@RequestMapping("/api/caregiver-schedule")
+@RequestMapping("/api/caregiverSchedule")
 @CrossOrigin(origins = "*")
 public class CaregiverScheduleController {
 
