@@ -59,4 +59,19 @@ public class MedicationPlan {
 
     @Column(name = "plan_note", length = 200)
     private String planNote;
+
+    @Column(name = "meal_timing", length = 20)
+    private String mealTiming;
+
+    @Column(name = "quantity")
+    private Integer quantity;
+
+    @Column(name = "intake_method", length = 100)
+    private String intakeMethod;
+
+    @Column(name = "end_date")
+    private LocalDate endDate;
+
+    @Column(name = "recurrence", length = 20)
+    private String recurrence;
 }

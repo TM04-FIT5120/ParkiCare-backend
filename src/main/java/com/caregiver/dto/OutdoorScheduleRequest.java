@@ -10,6 +10,9 @@ public class OutdoorScheduleRequest {
     @NotNull(message = "Patient ID cannot be null")
     private Long patientId;
 
+    @NotNull(message = "Caregiver ID cannot be null")
+    private Long caregiverId;
+
     @NotBlank(message = "Outdoor title cannot be empty")
     private String outdoorTitle;
 
@@ -21,4 +24,5 @@ public class OutdoorScheduleRequest {
 
     private String prepareNote;
     private Integer isCompleted;
+    private String recurrence;
 }

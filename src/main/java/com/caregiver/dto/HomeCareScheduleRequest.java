@@ -10,6 +10,9 @@ public class HomeCareScheduleRequest {
     @NotNull(message = "Patient ID cannot be null")
     private Long patientId;
 
+    @NotNull(message = "Caregiver ID cannot be null")
+    private Long caregiverId;
+
     @NotBlank(message = "Home care title cannot be empty")
     private String homeCareTitle;
 
@@ -22,4 +25,5 @@ public class HomeCareScheduleRequest {
     private String careNote;
     private Integer isCompleted;
     private Integer isUrgent;
+    private String recurrence;
 }

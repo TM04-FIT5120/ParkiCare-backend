@@ -15,6 +15,7 @@ public class CaregiverScheduleResponse {
     private String startDatetime;
     private String endDatetime;
     private String scheduleNote;
+    private String recurrence;
     private Integer isCompleted;
     private Integer isConflict;
 }

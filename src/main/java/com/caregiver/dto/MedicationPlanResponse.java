@@ -21,4 +21,10 @@ public class MedicationPlanResponse {
 
     private String status;
     private String note;
+
+    private String mealTiming;
+    private Integer quantity;
+    private String intakeMethod;
+    private String endDate;
+    private String recurrence;
 }

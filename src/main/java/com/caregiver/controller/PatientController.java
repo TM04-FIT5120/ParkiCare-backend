@@ -5,6 +5,7 @@ import com.caregiver.dto.PatientResponse;
 import com.caregiver.service.PatientService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
 
@@ -33,8 +34,9 @@ public class PatientController {
 
     // 查询单个患者详情
     @GetMapping("/{patientId}")
-    public PatientResponse getPatientById(@PathVariable Long patientId) {
-        return patientService.getPatientById(patientId);
+    public PatientResponse getPatientById(@PathVariable Long patientId,
+                                          @RequestParam Long caregiverId) {
+        return patientService.getPatientById(patientId, caregiverId);
     }
 
     // 更新患者
@@ -46,8 +48,9 @@ public class PatientController {
 
     // 删除患者
     @DeleteMapping("/{patientId}")
-    public String deletePatient(@PathVariable Long patientId) {
-        patientService.deletePatient(patientId);
+    public String deletePatient(@PathVariable Long patientId,
+                                @RequestParam Long caregiverId) {
+        patientService.deletePatient(patientId, caregiverId);
         return "Patient deleted successfully";
     }
 }

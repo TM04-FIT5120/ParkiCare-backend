@@ -2,8 +2,10 @@ package com.caregiver.service;
 
 import com.caregiver.dto.OutdoorScheduleRequest;
 import com.caregiver.dto.OutdoorScheduleResponse;
+import com.caregiver.entity.Patient;
 import com.caregiver.entity.PatientOutdoorSchedule;
 import com.caregiver.repository.PatientOutdoorScheduleRepository;
+import com.caregiver.repository.PatientRepository;
 import org.springframework.stereotype.Service;
 
 import java.time.LocalDateTime;
@@ -13,12 +15,17 @@ import java.util.List;
 public class PatientOutdoorScheduleService {
 
     private final PatientOutdoorScheduleRepository repository;
+    private final PatientRepository patientRepository;
 
-    public PatientOutdoorScheduleService(PatientOutdoorScheduleRepository repository) {
+    public PatientOutdoorScheduleService(PatientOutdoorScheduleRepository repository,
+                                         PatientRepository patientRepository) {
         this.repository = repository;
+        this.patientRepository = patientRepository;
     }
 
     public OutdoorScheduleResponse create(OutdoorScheduleRequest request) {
+        verifyPatientOwnership(request.getPatientId(), request.getCaregiverId());
+
         PatientOutdoorSchedule entity = new PatientOutdoorSchedule();
         entity.setPatientId(request.getPatientId());
         entity.setOutdoorTitle(request.getOutdoorTitle());
@@ -26,6 +33,7 @@ public class PatientOutdoorScheduleService {
         entity.setEndDatetime(LocalDateTime.parse(request.getEndDatetime()));
         entity.setPrepareNote(request.getPrepareNote());
         entity.setIsCompleted(request.getIsCompleted() == null ? 0 : request.getIsCompleted());
+        entity.setRecurrence(request.getRecurrence() == null ? "none" : request.getRecurrence());
 
         return toResponse(repository.save(entity));
     }
@@ -38,20 +46,32 @@ public class PatientOutdoorScheduleService {
         PatientOutdoorSchedule entity = repository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Outdoor event not found"));
 
+        verifyPatientOwnership(entity.getPatientId(), request.getCaregiverId());
+
         entity.setPatientId(request.getPatientId());
         entity.setOutdoorTitle(request.getOutdoorTitle());
         entity.setStartDatetime(LocalDateTime.parse(request.getStartDatetime()));
         entity.setEndDatetime(LocalDateTime.parse(request.getEndDatetime()));
         entity.setPrepareNote(request.getPrepareNote());
         entity.setIsCompleted(request.getIsCompleted() == null ? 0 : request.getIsCompleted());
+        entity.setRecurrence(request.getRecurrence() == null ? "none" : request.getRecurrence());
 
         return toResponse(repository.save(entity));
     }
 
-    public void delete(Long id) {
+    public void delete(Long id, Long caregiverId) {
         PatientOutdoorSchedule entity = repository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Outdoor event not found"));
+        verifyPatientOwnership(entity.getPatientId(), caregiverId);
         repository.delete(entity);
+    }
+
+    private void verifyPatientOwnership(Long patientId, Long caregiverId) {
+        Patient patient = patientRepository.findById(patientId)
+                .orElseThrow(() -> new RuntimeException("Patient not found"));
+        if (!patient.getCaregiverId().equals(caregiverId)) {
+            throw new RuntimeException("Access denied: patient does not belong to this caregiver");
+        }
     }
 
     private OutdoorScheduleResponse toResponse(PatientOutdoorSchedule entity) {
@@ -62,7 +82,8 @@ public class PatientOutdoorScheduleService {
                 entity.getStartDatetime() != null ? entity.getStartDatetime().toString() : null,
                 entity.getEndDatetime() != null ? entity.getEndDatetime().toString() : null,
                 entity.getPrepareNote(),
-                entity.getIsCompleted()
+                entity.getIsCompleted(),
+                entity.getRecurrence()
         );
     }
 }

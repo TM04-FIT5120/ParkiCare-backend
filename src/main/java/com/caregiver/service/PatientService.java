@@ -43,9 +43,12 @@ public class PatientService {
                 .toList();
     }
 
-    public PatientResponse getPatientById(Long patientId) {
+    public PatientResponse getPatientById(Long patientId, Long caregiverId) {
         Patient patient = patientRepository.findById(patientId)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
+        if (!patient.getCaregiverId().equals(caregiverId)) {
+            throw new RuntimeException("Access denied: patient does not belong to this caregiver");
+        }
         return convertToResponse(patient);
     }
 
@@ -56,8 +59,10 @@ public class PatientService {
         if (!caregiverRepository.existsById(request.getCaregiverId())) {
             throw new RuntimeException("Caregiver not found");
         }
+        if (!patient.getCaregiverId().equals(request.getCaregiverId())) {
+            throw new RuntimeException("Access denied: patient does not belong to this caregiver");
+        }
 
-        patient.setCaregiverId(request.getCaregiverId());
         patient.setPatientNickname(request.getPatientNickname().trim());
         patient.setAgeRange(request.getAgeRange());
         patient.setRemark(request.getRemark());
@@ -66,10 +71,12 @@ public class PatientService {
         return convertToResponse(updated);
     }
 
-    public void deletePatient(Long patientId) {
+    public void deletePatient(Long patientId, Long caregiverId) {
         Patient patient = patientRepository.findById(patientId)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
-
+        if (!patient.getCaregiverId().equals(caregiverId)) {
+            throw new RuntimeException("Access denied: patient does not belong to this caregiver");
+        }
         patientRepository.delete(patient);
     }
 

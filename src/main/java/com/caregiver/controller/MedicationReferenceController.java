@@ -27,8 +27,13 @@ public class MedicationReferenceController {
         return medicationReferenceService.getDrugs();
     }
 
-    @GetMapping("/{drugId}")
+    @GetMapping("/{drugId:\\d+}")
     public DrugBase getDrugById(@PathVariable Long drugId) {
         return medicationReferenceService.getDrugById(drugId);
+    }
+
+    @GetMapping("/manufacturers")
+    public List<String> searchManufacturers(@RequestParam String keyword) {
+        return medicationReferenceService.searchManufacturers(keyword);
     }
 }

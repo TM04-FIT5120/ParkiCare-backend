@@ -17,4 +17,5 @@ public class HomeCareScheduleResponse {
     private String careNote;
     private Integer isCompleted;
     private Integer isUrgent;
+    private String recurrence;
 }
