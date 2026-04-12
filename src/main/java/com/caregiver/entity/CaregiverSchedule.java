@@ -33,6 +33,9 @@ public class CaregiverSchedule {
     @Column(name = "schedule_note", length = 200)
     private String scheduleNote;
 
+    @Column(name = "recurrence", length = 20)
+    private String recurrence;
+
     @Column(name = "is_completed", nullable = false)
     private Integer isCompleted = 0;
 

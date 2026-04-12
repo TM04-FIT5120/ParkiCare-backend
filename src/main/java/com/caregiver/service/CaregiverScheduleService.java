@@ -33,6 +33,7 @@ public class CaregiverScheduleService {
         schedule.setStartDatetime(LocalDateTime.parse(request.getStartDatetime()));
         schedule.setEndDatetime(LocalDateTime.parse(request.getEndDatetime()));
         schedule.setScheduleNote(request.getScheduleNote());
+        schedule.setRecurrence(request.getRecurrence());
         schedule.setIsCompleted(request.getIsCompleted() == null ? 0 : request.getIsCompleted());
         schedule.setIsConflict(request.getIsConflict() == null ? 0 : request.getIsConflict());
 
@@ -47,9 +48,12 @@ public class CaregiverScheduleService {
                 .toList();
     }
 
-    public CaregiverScheduleResponse getScheduleById(Long id) {
+    public CaregiverScheduleResponse getScheduleById(Long id, Long caregiverId) {
         CaregiverSchedule schedule = caregiverScheduleRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Caregiver schedule not found"));
+        if (!schedule.getCaregiverId().equals(caregiverId)) {
+            throw new RuntimeException("Access denied: schedule does not belong to this caregiver");
+        }
         return toResponse(schedule);
     }
 
@@ -60,12 +64,16 @@ public class CaregiverScheduleService {
         if (!caregiverRepository.existsById(request.getCaregiverId())) {
             throw new RuntimeException("Caregiver not found");
         }
+        if (!schedule.getCaregiverId().equals(request.getCaregiverId())) {
+            throw new RuntimeException("Access denied: schedule does not belong to this caregiver");
+        }
 
         schedule.setCaregiverId(request.getCaregiverId());
         schedule.setScheduleTitle(request.getScheduleTitle().trim());
         schedule.setStartDatetime(LocalDateTime.parse(request.getStartDatetime()));
         schedule.setEndDatetime(LocalDateTime.parse(request.getEndDatetime()));
         schedule.setScheduleNote(request.getScheduleNote());
+        schedule.setRecurrence(request.getRecurrence());
         schedule.setIsCompleted(request.getIsCompleted() == null ? 0 : request.getIsCompleted());
         schedule.setIsConflict(request.getIsConflict() == null ? 0 : request.getIsConflict());
 
@@ -73,10 +81,12 @@ public class CaregiverScheduleService {
         return toResponse(updated);
     }
 
-    public void deleteSchedule(Long id) {
+    public void deleteSchedule(Long id, Long caregiverId) {
         CaregiverSchedule schedule = caregiverScheduleRepository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Caregiver schedule not found"));
-
+        if (!schedule.getCaregiverId().equals(caregiverId)) {
+            throw new RuntimeException("Access denied: schedule does not belong to this caregiver");
+        }
         caregiverScheduleRepository.delete(schedule);
     }
 
@@ -88,6 +98,7 @@ public class CaregiverScheduleService {
                 schedule.getStartDatetime() != null ? schedule.getStartDatetime().toString() : null,
                 schedule.getEndDatetime() != null ? schedule.getEndDatetime().toString() : null,
                 schedule.getScheduleNote(),
+                schedule.getRecurrence(),
                 schedule.getIsCompleted(),
                 schedule.getIsConflict()
         );

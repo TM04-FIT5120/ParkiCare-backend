@@ -27,7 +27,12 @@ public class MedicationPlanService {
                                                      LocalTime adminTimes,
                                                      LocalTime remindTime,
                                                      LocalDate startDate,
-                                                     String planNote) {
+                                                     String planNote,
+                                                     String mealTiming,
+                                                     Integer quantity,
+                                                     String intakeMethod,
+                                                     LocalDate endDate,
+                                                     String recurrence) {
         if (patientId == null) {
             throw new RuntimeException("Patient ID cannot be null");
         }
@@ -50,26 +55,27 @@ public class MedicationPlanService {
         Long maxPlanId = medicationReminderRepository.findMaxPlanId();
         long nextPlanId = (maxPlanId == null) ? 1L : maxPlanId + 1L;
 
-        MedicationPlan medicationPlan=new MedicationPlan();
-            MedicationPlan plan = new MedicationPlan();
-            plan.setPlanId(nextPlanId);
-            plan.setPatientId(patientId);
-            plan.setDrugId(drugId);
-            plan.setDosage(dosage.trim());
-            plan.setFrequency(frequency.trim());
-            plan.setAdminTime(adminTimes);
-            plan.setRemindTime(remindTime);
-            plan.setStartDate(startDate);
-            plan.setIsOverdue(0);
-            plan.setSnoozeTime(null);
-            plan.setRemindStatus(0); // 0 = NOT_TRIGGERED
-            plan.setIsValid(1);      // 1 = valid / pending
-            plan.setPlanNote(planNote);
+        MedicationPlan plan = new MedicationPlan();
+        plan.setPlanId(nextPlanId);
+        plan.setPatientId(patientId);
+        plan.setDrugId(drugId);
+        plan.setDosage(dosage.trim());
+        plan.setFrequency(frequency.trim());
+        plan.setAdminTime(adminTimes);
+        plan.setRemindTime(remindTime);
+        plan.setStartDate(startDate);
+        plan.setIsOverdue(0);
+        plan.setSnoozeTime(null);
+        plan.setRemindStatus(0);
+        plan.setIsValid(1);
+        plan.setPlanNote(planNote);
+        plan.setMealTiming(mealTiming);
+        plan.setQuantity(quantity);
+        plan.setIntakeMethod(intakeMethod);
+        plan.setEndDate(endDate);
+        plan.setRecurrence(recurrence);
 
-            medicationReminderRepository.save(plan);
-
-
-        return medicationPlan;
+        return medicationReminderRepository.save(plan);
     }
 
     public List<MedicationPlan> getPlansByPatient(Long patientId) {

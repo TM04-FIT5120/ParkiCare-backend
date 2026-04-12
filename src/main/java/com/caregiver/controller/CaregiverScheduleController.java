@@ -30,8 +30,9 @@ public class CaregiverScheduleController {
     }
 
     @GetMapping("/{id}")
-    public CaregiverScheduleResponse getScheduleById(@PathVariable Long id) {
-        return caregiverScheduleService.getScheduleById(id);
+    public CaregiverScheduleResponse getScheduleById(@PathVariable Long id,
+                                                     @RequestParam Long caregiverId) {
+        return caregiverScheduleService.getScheduleById(id, caregiverId);
     }
 
     @PutMapping("/{id}")
@@ -41,8 +42,8 @@ public class CaregiverScheduleController {
     }
 
     @DeleteMapping("/{id}")
-    public String deleteSchedule(@PathVariable Long id) {
-        caregiverScheduleService.deleteSchedule(id);
+    public String deleteSchedule(@PathVariable Long id, @RequestParam Long caregiverId) {
+        caregiverScheduleService.deleteSchedule(id, caregiverId);
         return "Caregiver schedule deleted successfully";
     }
 }

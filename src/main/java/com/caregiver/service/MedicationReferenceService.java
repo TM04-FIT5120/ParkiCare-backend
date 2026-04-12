@@ -30,4 +30,11 @@ public class MedicationReferenceService {
         return medicationReferenceRepository.findByDrugId(drugId)
                 .orElseThrow(() -> new RuntimeException("Drug not found"));
     }
+
+    public List<String> searchManufacturers(String keyword) {
+        if (keyword == null || keyword.trim().isEmpty()) {
+            return List.of();
+        }
+        return medicationReferenceRepository.findDistinctManufacturerNamesByKeyword(keyword.trim());
+    }
 }

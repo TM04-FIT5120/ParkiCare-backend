@@ -7,6 +7,7 @@ import com.caregiver.service.MedicationPlanService;
 import com.caregiver.service.MedicationReminderService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -30,18 +31,28 @@ public class ReminderController {
     public MedicationPlan createMedicationPlan(
             @Valid @RequestBody MedicationPlanRequest request) {
 
-                MedicationPlan medicationPlan= medicationPlanService.createMedicationPlan(
+        LocalDate endDate = (request.getEndDate() != null && !request.getEndDate().isBlank())
+                ? LocalDate.parse(request.getEndDate())
+                : null;
+
+        // adminTimes may be comma-separated (e.g. "08:00,20:00") — use the first time only
+        String firstAdminTime = request.getAdminTimes().split(",")[0].trim();
+
+        return medicationPlanService.createMedicationPlan(
                 request.getPatientId(),
                 request.getDrugId(),
                 request.getDosage(),
                 request.getFrequency(),
-                LocalTime.parse(request.getAdminTimes()),
+                LocalTime.parse(firstAdminTime),
                 LocalTime.parse(request.getRemindTime()),
                 LocalDate.parse(request.getStartDate()),
-                request.getPlanNote()
+                request.getPlanNote(),
+                request.getMealTiming(),
+                request.getQuantity(),
+                request.getIntakeMethod(),
+                endDate,
+                request.getRecurrence()
         );
-
-        return medicationPlan;
     }
 
     @GetMapping("/patient/{patientId}")
@@ -50,18 +61,21 @@ public class ReminderController {
     }
 
     @PatchMapping("/confirm/{remindId}")
-    public MedicationPlan confirmReminder(@PathVariable Long remindId) {
-        return medicationReminderService.confirmReminder(remindId);
+    public MedicationPlan confirmReminder(@PathVariable Long remindId,
+                                          @RequestParam Long caregiverId) {
+        return medicationReminderService.confirmReminder(remindId, caregiverId);
     }
 
     @PatchMapping("/later/{remindId}")
-    public MedicationPlan snoozeReminder(@PathVariable Long remindId) {
-        return medicationReminderService.snoozeReminder(remindId);
+    public MedicationPlan snoozeReminder(@PathVariable Long remindId,
+                                         @RequestParam Long caregiverId) {
+        return medicationReminderService.snoozeReminder(remindId, caregiverId);
     }
 
     @GetMapping("/pending/{patientId}")
-    public List<MedicationPlan> getPendingReminders(@PathVariable Long patientId) {
-        return medicationReminderService.getPendingReminders(patientId);
+    public List<MedicationPlan> getPendingReminders(@PathVariable Long patientId,
+                                                    @RequestParam Long caregiverId) {
+        return medicationReminderService.getPendingReminders(patientId, caregiverId);
     }
 
     private MedicationPlanResponse convertToResponse(MedicationPlan plan) {
@@ -74,7 +88,12 @@ public class ReminderController {
                 plan.getStartDate() != null ? plan.getStartDate().toString() : null,
                 plan.getAdminTime() != null ? plan.getAdminTime().toString() : null,
                 String.valueOf(plan.getRemindStatus()),
-                plan.getPlanNote()
+                plan.getPlanNote(),
+                plan.getMealTiming(),
+                plan.getQuantity(),
+                plan.getIntakeMethod(),
+                plan.getEndDate() != null ? plan.getEndDate().toString() : null,
+                plan.getRecurrence()
         );
     }
 }

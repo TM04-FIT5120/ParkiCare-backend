@@ -35,4 +35,7 @@ public class PatientOutdoorSchedule {
 
     @Column(name = "is_completed", nullable = false)
     private Integer isCompleted = 0;
+
+    @Column(name = "recurrence", length = 20)
+    private String recurrence;
 }

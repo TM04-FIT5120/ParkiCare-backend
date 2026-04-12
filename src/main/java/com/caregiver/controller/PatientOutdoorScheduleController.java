@@ -5,6 +5,7 @@ import com.caregiver.dto.OutdoorScheduleResponse;
 import com.caregiver.service.PatientOutdoorScheduleService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
+import org.springframework.web.bind.annotation.RequestParam;
 
 import java.util.List;
 
@@ -36,8 +37,8 @@ public class PatientOutdoorScheduleController {
     }
 
     @DeleteMapping("/{id}")
-    public String delete(@PathVariable Long id) {
-        service.delete(id);
+    public String delete(@PathVariable Long id, @RequestParam Long caregiverId) {
+        service.delete(id, caregiverId);
         return "Outdoor event deleted successfully";
     }
 }

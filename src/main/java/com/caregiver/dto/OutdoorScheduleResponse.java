@@ -16,4 +16,5 @@ public class OutdoorScheduleResponse {
     private String endDatetime;
     private String prepareNote;
     private Integer isCompleted;
+    private String recurrence;
 }

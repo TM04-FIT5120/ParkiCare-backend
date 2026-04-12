@@ -21,6 +21,8 @@ public class CaregiverScheduleRequest {
 
     private String scheduleNote;
 
+    private String recurrence;
+
     private Integer isCompleted;
 
     private Integer isConflict;

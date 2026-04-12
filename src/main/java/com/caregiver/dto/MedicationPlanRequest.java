@@ -33,4 +33,14 @@ public class MedicationPlanRequest {
     private String startDate;
 
     private String planNote;
+
+    private String mealTiming;
+
+    private Integer quantity;
+
+    private String intakeMethod;
+
+    private String endDate;
+
+    private String recurrence;
 }

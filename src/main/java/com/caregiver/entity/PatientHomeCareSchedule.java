@@ -38,4 +38,7 @@ public class PatientHomeCareSchedule {
 
     @Column(name = "is_urgent", nullable = false)
     private Integer isUrgent = 0;
+
+    @Column(name = "recurrence", length = 20)
+    private String recurrence;
 }
