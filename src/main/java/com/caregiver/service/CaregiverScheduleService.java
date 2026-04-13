@@ -42,7 +42,7 @@ public class CaregiverScheduleService {
     }
 
     public List<CaregiverScheduleResponse> getSchedulesByCaregiver(Long caregiverId) {
-        return caregiverScheduleRepository.findByCaregiverId(caregiverId)
+        return caregiverScheduleRepository.findByCaregiverIdAndIsDeleted(caregiverId, 0)
                 .stream()
                 .map(this::toResponse)
                 .toList();
@@ -87,7 +87,8 @@ public class CaregiverScheduleService {
         if (!schedule.getCaregiverId().equals(caregiverId)) {
             throw new RuntimeException("Access denied: schedule does not belong to this caregiver");
         }
-        caregiverScheduleRepository.delete(schedule);
+        schedule.setIsDeleted(1);
+        caregiverScheduleRepository.save(schedule);
     }
 
     private CaregiverScheduleResponse toResponse(CaregiverSchedule schedule) {

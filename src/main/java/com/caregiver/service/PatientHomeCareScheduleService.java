@@ -40,7 +40,7 @@ public class PatientHomeCareScheduleService {
     }
 
     public List<HomeCareScheduleResponse> getByPatient(Long patientId) {
-        return repository.findByPatientId(patientId).stream().map(this::toResponse).toList();
+        return repository.findByPatientIdAndIsDeleted(patientId, 0).stream().map(this::toResponse).toList();
     }
 
     public HomeCareScheduleResponse update(Long id, HomeCareScheduleRequest request) {
@@ -65,7 +65,8 @@ public class PatientHomeCareScheduleService {
         PatientHomeCareSchedule entity = repository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Home care event not found"));
         verifyPatientOwnership(entity.getPatientId(), caregiverId);
-        repository.delete(entity);
+        entity.setIsDeleted(1);
+        repository.save(entity);
     }
 
     private void verifyPatientOwnership(Long patientId, Long caregiverId) {

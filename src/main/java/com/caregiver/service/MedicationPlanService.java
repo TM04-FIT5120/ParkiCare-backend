@@ -79,7 +79,7 @@ public class MedicationPlanService {
     }
 
     public List<MedicationPlan> getPlansByPatient(Long patientId) {
-        return medicationReminderRepository.findByPatientId(patientId);
+        return medicationReminderRepository.findByPatientIdAndIsValid(patientId, 1);
     }
 
     public List<MedicationPlan> getPlansByPatientAndDate(Long patientId, LocalDate date) {

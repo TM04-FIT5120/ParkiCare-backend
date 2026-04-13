@@ -14,6 +14,8 @@ public interface MedicationReminderRepository extends JpaRepository<MedicationPl
 
     List<MedicationPlan> findByPatientId(Long patientId);
 
+    List<MedicationPlan> findByPatientIdAndIsValid(Long patientId, Integer isValid);
+
     List<MedicationPlan> findByPatientIdAndStartDate(Long patientId, LocalDate startDate);
 
     List<MedicationPlan> findByPatientIdAndRemindStatusIn(Long patientId, List<Integer> statuses);

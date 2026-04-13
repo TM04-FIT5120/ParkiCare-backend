@@ -7,5 +7,5 @@ import java.util.List;
 
 public interface CaregiverScheduleRepository extends JpaRepository<CaregiverSchedule, Long> {
 
-    List<CaregiverSchedule> findByCaregiverId(Long caregiverId);
+    List<CaregiverSchedule> findByCaregiverIdAndIsDeleted(Long caregiverId, Integer isDeleted);
 }

@@ -78,6 +78,13 @@ public class ReminderController {
         return medicationReminderService.getPendingReminders(patientId, caregiverId);
     }
 
+    @DeleteMapping("/{remindId}")
+    public String deleteMedicationPlan(@PathVariable Long remindId,
+                                       @RequestParam Long caregiverId) {
+        medicationReminderService.deleteMedicationPlan(remindId, caregiverId);
+        return "Medication plan deleted successfully";
+    }
+
     private MedicationPlanResponse convertToResponse(MedicationPlan plan) {
         return new MedicationPlanResponse(
                 plan.getRemindId(),
