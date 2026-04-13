@@ -7,5 +7,5 @@ import java.util.List;
 
 public interface PatientOutdoorScheduleRepository extends JpaRepository<PatientOutdoorSchedule, Long> {
 
-    List<PatientOutdoorSchedule> findByPatientId(Long patientId);
+    List<PatientOutdoorSchedule> findByPatientIdAndIsDeleted(Long patientId, Integer isDeleted);
 }

@@ -41,4 +41,7 @@ public class CaregiverSchedule {
 
     @Column(name = "is_conflict", nullable = false)
     private Integer isConflict = 0;
+
+    @Column(name = "is_deleted", nullable = false)
+    private Integer isDeleted = 0;
 }

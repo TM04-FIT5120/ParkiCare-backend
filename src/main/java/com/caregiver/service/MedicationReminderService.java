@@ -49,6 +49,17 @@ public class MedicationReminderService {
         return medicationReminderRepository.save(plan);
     }
 
+    @Transactional
+    public void deleteMedicationPlan(Long remindId, Long caregiverId) {
+        MedicationPlan plan = medicationReminderRepository.findByRemindId(remindId)
+                .orElseThrow(() -> new RuntimeException("Medication plan not found"));
+
+        verifyPatientOwnership(plan.getPatientId(), caregiverId);
+
+        plan.setIsValid(0); // soft-delete: mark as inactive
+        medicationReminderRepository.save(plan);
+    }
+
     public List<MedicationPlan> getPendingReminders(Long patientId, Long caregiverId) {
         verifyPatientOwnership(patientId, caregiverId);
         // 1 = pending, 3 = snoozed

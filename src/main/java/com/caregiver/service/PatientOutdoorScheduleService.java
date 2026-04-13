@@ -39,7 +39,7 @@ public class PatientOutdoorScheduleService {
     }
 
     public List<OutdoorScheduleResponse> getByPatient(Long patientId) {
-        return repository.findByPatientId(patientId).stream().map(this::toResponse).toList();
+        return repository.findByPatientIdAndIsDeleted(patientId, 0).stream().map(this::toResponse).toList();
     }
 
     public OutdoorScheduleResponse update(Long id, OutdoorScheduleRequest request) {
@@ -63,7 +63,8 @@ public class PatientOutdoorScheduleService {
         PatientOutdoorSchedule entity = repository.findById(id)
                 .orElseThrow(() -> new RuntimeException("Outdoor event not found"));
         verifyPatientOwnership(entity.getPatientId(), caregiverId);
-        repository.delete(entity);
+        entity.setIsDeleted(1);
+        repository.save(entity);
     }
 
     private void verifyPatientOwnership(Long patientId, Long caregiverId) {

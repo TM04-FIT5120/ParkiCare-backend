@@ -41,4 +41,7 @@ public class PatientHomeCareSchedule {
 
     @Column(name = "recurrence", length = 20)
     private String recurrence;
+
+    @Column(name = "is_deleted", nullable = false)
+    private Integer isDeleted = 0;
 }

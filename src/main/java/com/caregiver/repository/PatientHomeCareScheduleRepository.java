@@ -7,5 +7,5 @@ import java.util.List;
 
 public interface PatientHomeCareScheduleRepository extends JpaRepository<PatientHomeCareSchedule, Long> {
 
-    List<PatientHomeCareSchedule> findByPatientId(Long patientId);
+    List<PatientHomeCareSchedule> findByPatientIdAndIsDeleted(Long patientId, Integer isDeleted);
 }
