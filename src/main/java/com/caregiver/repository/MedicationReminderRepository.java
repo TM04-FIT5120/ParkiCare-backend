@@ -46,4 +46,13 @@ public interface MedicationReminderRepository extends JpaRepository<MedicationPl
     @Query("SELECT m FROM MedicationPlan m WHERE m.remindStatus = 3 AND m.isValid = 1 " +
            "AND m.snoozeTime <= :now")
     List<MedicationPlan> findSnoozedRemindersReady(@Param("now") LocalDateTime now);
+
+
+    @Query("SELECT m FROM MedicationPlan m WHERE m.isValid = 1 " +
+            "AND m.remindTime = :targetTime " +
+            "AND m.startDate <= :targetDate AND (m.endDate IS NULL OR m.endDate >= :targetDate)")
+    List<MedicationPlan> findActiveByRemindTimeOnDate(
+            @Param("targetTime") LocalTime targetTime,
+            @Param("targetDate") LocalDate targetDate);
+
 }

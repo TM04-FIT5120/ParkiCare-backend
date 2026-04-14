@@ -85,4 +85,23 @@ public class MedicationPlanService {
     public List<MedicationPlan> getPlansByPatientAndDate(Long patientId, LocalDate date) {
         return medicationReminderRepository.findByPatientIdAndStartDate(patientId, date);
     }
+
+    public List<MedicationPlan> getPlansRemindTimeNow() {
+        LocalDate targetDate = LocalDate.now();
+        LocalTime targetTime = LocalTime.now().withSecond(0).withNano(0);
+        return medicationReminderRepository.findActiveByRemindTimeOnDate(targetTime, targetDate);
+    }
+
+    public List<MedicationPlan> getPlansRemindTimePlus5() {
+        LocalDate nowDate = LocalDate.now();
+        LocalTime nowTime = LocalTime.now().withSecond(0).withNano(0);
+
+        LocalTime plus5 = nowTime.plusMinutes(5);
+
+        // 注意：LocalTime 可能跨日（23:58 +5 = 00:03）
+        LocalDate targetDate = plus5.isBefore(nowTime) ? nowDate.plusDays(1) : nowDate;
+
+        return medicationReminderRepository.findActiveByRemindTimeOnDate(plus5, targetDate);
+    }
+
 }

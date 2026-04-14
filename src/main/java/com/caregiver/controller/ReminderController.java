@@ -103,4 +103,15 @@ public class ReminderController {
                 plan.getRecurrence()
         );
     }
+
+    @GetMapping("/medicationPlan/now")
+    public List<MedicationPlan> getMedicationPlansNow() {
+        return medicationPlanService.getPlansRemindTimeNow();
+    }
+
+    @GetMapping("/medicationPlan/plus5")
+    public List<MedicationPlan> getMedicationPlansPlus5() {
+        return medicationPlanService.getPlansRemindTimePlus5();
+    }
+
 }
