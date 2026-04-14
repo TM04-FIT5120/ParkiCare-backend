@@ -69,6 +69,14 @@ public class PatientHomeCareScheduleService {
         repository.save(entity);
     }
 
+    public HomeCareScheduleResponse togglePin(Long id, Long caregiverId) {
+        PatientHomeCareSchedule entity = repository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Home care event not found"));
+        verifyPatientOwnership(entity.getPatientId(), caregiverId);
+        entity.setIsPinned(entity.getIsPinned() != null && entity.getIsPinned() == 1 ? 0 : 1);
+        return toResponse(repository.save(entity));
+    }
+
     private void verifyPatientOwnership(Long patientId, Long caregiverId) {
         Patient patient = patientRepository.findById(patientId)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
@@ -87,7 +95,8 @@ public class PatientHomeCareScheduleService {
                 entity.getCareNote(),
                 entity.getIsCompleted(),
                 entity.getIsUrgent(),
-                entity.getRecurrence()
+                entity.getRecurrence(),
+                entity.getIsPinned()
         );
     }
 }

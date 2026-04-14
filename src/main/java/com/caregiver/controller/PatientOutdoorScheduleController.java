@@ -41,4 +41,9 @@ public class PatientOutdoorScheduleController {
         service.delete(id, caregiverId);
         return "Outdoor event deleted successfully";
     }
+
+    @PatchMapping("/{id}/pin")
+    public OutdoorScheduleResponse togglePin(@PathVariable Long id, @RequestParam Long caregiverId) {
+        return service.togglePin(id, caregiverId);
+    }
 }

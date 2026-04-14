@@ -18,4 +18,5 @@ public class HomeCareScheduleResponse {
     private Integer isCompleted;
     private Integer isUrgent;
     private String recurrence;
+    private Integer isPinned;
 }

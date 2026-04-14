@@ -64,6 +64,20 @@
             <artifactId>spring-boot-starter-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <dependency>
+            <groupId>com.google.firebase</groupId>
+            <artifactId>firebase-admin</artifactId>
+            <version>9.4.2</version>
+        </dependency>
+        <!-- Pin google-auth-library-credentials to match the oauth2-http version
+             that firebase-admin resolves to. Without this, Maven picks an older
+             credentials jar that is missing CredentialTypeForMetrics, causing a
+             ClassNotFoundException at runtime when FCM tries to refresh its token. -->
+        <dependency>
+            <groupId>com.google.auth</groupId>
+            <artifactId>google-auth-library-credentials</artifactId>
+            <version>1.29.0</version>
+        </dependency>
     </dependencies>
 
     <build>

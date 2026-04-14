@@ -41,4 +41,7 @@ public class PatientOutdoorSchedule {
 
     @Column(name = "is_deleted", nullable = false)
     private Integer isDeleted = 0;
+
+    @Column(name = "is_pinned", nullable = false)
+    private Integer isPinned = 0;
 }

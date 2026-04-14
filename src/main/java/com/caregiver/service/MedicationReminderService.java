@@ -7,6 +7,7 @@ import com.caregiver.repository.PatientRepository;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.util.List;
 
@@ -32,8 +33,44 @@ public class MedicationReminderService {
         plan.setRemindStatus(2); // 2 = completed / confirmed
         plan.setIsValid(0);      // completed, no longer pending
         plan.setSnoozeTime(null);
+        medicationReminderRepository.save(plan);
 
-        return medicationReminderRepository.save(plan);
+        // For recurring plans, create the next occurrence so the reminder fires again
+        if (plan.getRecurrence() != null && !plan.getRecurrence().isBlank()) {
+            LocalDate nextDate = nextOccurrenceDate(plan.getStartDate(), plan.getRecurrence());
+            if (nextDate != null && (plan.getEndDate() == null || !nextDate.isAfter(plan.getEndDate()))) {
+                MedicationPlan next = new MedicationPlan();
+                next.setPlanId(plan.getPlanId());
+                next.setPatientId(plan.getPatientId());
+                next.setDrugId(plan.getDrugId());
+                next.setDosage(plan.getDosage());
+                next.setFrequency(plan.getFrequency());
+                next.setAdminTime(plan.getAdminTime());
+                next.setRemindTime(plan.getRemindTime());
+                next.setStartDate(nextDate);
+                next.setEndDate(plan.getEndDate());
+                next.setRecurrence(plan.getRecurrence());
+                next.setPlanNote(plan.getPlanNote());
+                next.setMealTiming(plan.getMealTiming());
+                next.setQuantity(plan.getQuantity());
+                next.setIntakeMethod(plan.getIntakeMethod());
+                next.setRemindStatus(0);
+                next.setIsValid(1);
+                next.setIsOverdue(0);
+                medicationReminderRepository.save(next);
+            }
+        }
+
+        return plan;
+    }
+
+    private LocalDate nextOccurrenceDate(LocalDate from, String recurrence) {
+        return switch (recurrence.toLowerCase()) {
+            case "daily"   -> from.plusDays(1);
+            case "weekly"  -> from.plusWeeks(1);
+            case "monthly" -> from.plusMonths(1);
+            default        -> null; // unknown recurrence pattern — do not auto-create
+        };
     }
 
     @Transactional
