@@ -67,6 +67,14 @@ public class PatientOutdoorScheduleService {
         repository.save(entity);
     }
 
+    public OutdoorScheduleResponse togglePin(Long id, Long caregiverId) {
+        PatientOutdoorSchedule entity = repository.findById(id)
+                .orElseThrow(() -> new RuntimeException("Outdoor event not found"));
+        verifyPatientOwnership(entity.getPatientId(), caregiverId);
+        entity.setIsPinned(entity.getIsPinned() != null && entity.getIsPinned() == 1 ? 0 : 1);
+        return toResponse(repository.save(entity));
+    }
+
     private void verifyPatientOwnership(Long patientId, Long caregiverId) {
         Patient patient = patientRepository.findById(patientId)
                 .orElseThrow(() -> new RuntimeException("Patient not found"));
@@ -84,7 +92,8 @@ public class PatientOutdoorScheduleService {
                 entity.getEndDatetime() != null ? entity.getEndDatetime().toString() : null,
                 entity.getPrepareNote(),
                 entity.getIsCompleted(),
-                entity.getRecurrence()
+                entity.getRecurrence(),
+                entity.getIsPinned()
         );
     }
 }

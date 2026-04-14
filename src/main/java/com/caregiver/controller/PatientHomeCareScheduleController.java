@@ -41,4 +41,9 @@ public class PatientHomeCareScheduleController {
         service.delete(id, caregiverId);
         return "Home care event deleted successfully";
     }
+
+    @PatchMapping("/{id}/pin")
+    public HomeCareScheduleResponse togglePin(@PathVariable Long id, @RequestParam Long caregiverId) {
+        return service.togglePin(id, caregiverId);
+    }
 }

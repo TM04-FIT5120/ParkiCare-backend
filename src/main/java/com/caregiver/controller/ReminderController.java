@@ -35,7 +35,7 @@ public class ReminderController {
                 ? LocalDate.parse(request.getEndDate())
                 : null;
 
-        // adminTimes may be comma-separated (e.g. "08:00,20:00") — use the first time only
+        // adminTimes may be comma-separated (e.g. "08:00,20:00") - use the first time only
         String firstAdminTime = request.getAdminTimes().split(",")[0].trim();
 
         return medicationPlanService.createMedicationPlan(
