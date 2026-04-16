@@ -1,7 +1,9 @@
 package com.caregiver.service;
 
+import com.caregiver.entity.DrugBase;
 import com.caregiver.entity.MedicationPlan;
 import com.caregiver.entity.Patient;
+import com.caregiver.repository.DrugBaseRepository;
 import com.caregiver.repository.MedicationReminderRepository;
 import com.caregiver.repository.PatientRepository;
 import org.slf4j.Logger;
@@ -23,13 +25,16 @@ public class MedicationReminderScheduler {
     private final MedicationReminderRepository medicationReminderRepository;
     private final PatientRepository patientRepository;
     private final PushNotificationService pushNotificationService;
+    private final DrugBaseRepository drugBaseRepository;
 
     public MedicationReminderScheduler(MedicationReminderRepository medicationReminderRepository,
                                        PatientRepository patientRepository,
-                                       PushNotificationService pushNotificationService) {
+                                       PushNotificationService pushNotificationService,
+                                       DrugBaseRepository drugBaseRepository) {
         this.medicationReminderRepository = medicationReminderRepository;
         this.patientRepository = patientRepository;
         this.pushNotificationService = pushNotificationService;
+        this.drugBaseRepository = drugBaseRepository;
     }
 
     /**
@@ -64,7 +69,7 @@ public class MedicationReminderScheduler {
 
             log.info("[Scheduler] Sending notification for remindId={} to caregiverId={}", plan.getRemindId(), caregiverId);
             String body = buildNotificationBody(plan);
-            pushNotificationService.sendToCaregiver(caregiverId, "Medication Reminder", body);
+            pushNotificationService.sendToCaregiver(caregiverId, plan.getRemindId(), "Medication Reminder", body);
 
             plan.setRemindStatus(1); // pending - awaiting confirmation
             medicationReminderRepository.save(plan);
@@ -87,7 +92,7 @@ public class MedicationReminderScheduler {
 
             log.info("[Scheduler] Re-firing snoozed remindId={} to caregiverId={}", plan.getRemindId(), caregiverId);
             String body = buildNotificationBody(plan);
-            pushNotificationService.sendToCaregiver(caregiverId, "Medication Reminder (Snoozed)", body);
+            pushNotificationService.sendToCaregiver(caregiverId, plan.getRemindId(), "Medication Reminder (Snoozed)", body);
 
             plan.setRemindStatus(1); // back to pending
             plan.setSnoozeTime(null);
@@ -102,12 +107,20 @@ public class MedicationReminderScheduler {
     }
 
     private String buildNotificationBody(MedicationPlan plan) {
-        StringBuilder sb = new StringBuilder("Time to take your medication");
+        String medName = drugBaseRepository.findById(plan.getDrugId())
+                .map(DrugBase::getDrugName)
+                .orElse("Medication");
+
+        StringBuilder sb = new StringBuilder(medName);
+
         if (plan.getDosage() != null && !plan.getDosage().isBlank()) {
-            sb.append(" – ").append(plan.getDosage());
+            sb.append(" - ").append(plan.getDosage());
+        }
+        if (plan.getQuantity() != null) {
+            sb.append(" - ").append(plan.getQuantity());
         }
         if (plan.getMealTiming() != null && !plan.getMealTiming().isBlank()) {
-            sb.append(" (").append(plan.getMealTiming()).append(")");
+            sb.append("/dose (").append(plan.getMealTiming()).append(")");
         }
         return sb.toString();
     }

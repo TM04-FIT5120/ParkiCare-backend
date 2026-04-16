@@ -24,6 +24,9 @@ public class PushSubscription {
     @Column(name = "fcm_token", nullable = false, columnDefinition = "TEXT")
     private String fcmToken;
 
+    @Column(name = "device_id", nullable = false, length = 64)
+    private String deviceId;
+
     @Column(name = "device_type", length = 50)
     private String deviceType;
 

@@ -31,16 +31,18 @@ public class PushNotificationService {
     }
 
     /**
-     * Upsert an FCM token for a caregiver.
-     * If the token already exists, reactivate it and update the timestamp.
-     * Otherwise, insert a new record.
+     * Upsert an FCM token for a caregiver device (browser instance/profile).
+     * Identity is (caregiverId, deviceId). Token rotations update the same row.
      */
     @Transactional
     public void saveToken(PushSubscriptionRequest request) {
-        pushSubscriptionRepository.findByFcmToken(request.getFcmToken())
+        pushSubscriptionRepository.findByCaregiverIdAndDeviceId(
+                        request.getCaregiverId(),
+                        request.getDeviceId())
                 .ifPresentOrElse(existing -> {
                     existing.setIsActive(true);
-                    existing.setCaregiverId(request.getCaregiverId());
+                    existing.setFcmToken(request.getFcmToken());
+                    existing.setDeviceId(request.getDeviceId());
                     existing.setDeviceType(request.getDeviceType());
                     existing.setUpdatedAt(LocalDateTime.now());
                     pushSubscriptionRepository.save(existing);
@@ -48,6 +50,7 @@ public class PushNotificationService {
                     PushSubscription sub = new PushSubscription();
                     sub.setCaregiverId(request.getCaregiverId());
                     sub.setFcmToken(request.getFcmToken());
+                    sub.setDeviceId(request.getDeviceId());
                     sub.setDeviceType(request.getDeviceType());
                     sub.setIsActive(true);
                     sub.setCreatedAt(LocalDateTime.now());
@@ -70,21 +73,35 @@ public class PushNotificationService {
 
     /**
      * Send a push notification to all active devices registered for a caregiver.
+     * remindId and caregiverId are included in the FCM data payload so the service
+     * worker can invoke the confirm/snooze APIs directly from notification action buttons.
      * Tokens that are no longer registered with FCM are automatically deactivated.
      */
-    public void sendToCaregiver(Long caregiverId, String title, String body) {
+    public void sendToCaregiver(Long caregiverId, Long remindId, String title, String body) {
         List<PushSubscription> tokens = pushSubscriptionRepository
                 .findByCaregiverIdAndIsActive(caregiverId, true);
 
-        log.info("[FCM] Sending to caregiverId={} — {} active token(s)", caregiverId, tokens.size());
+        log.info("[FCM] Sending to caregiverId={} remindId={} — {} active token(s)", caregiverId, remindId, tokens.size());
 
         for (PushSubscription sub : tokens) {
+            // Use setNotification() for the visible title/body so FCM does NOT
+            // silently convert putData("title"/"body") into a notification envelope
+            // and discard the other data fields (a known FCM Web Push behaviour when
+            // data keys collide with reserved notification field names).
+            // remindId and caregiverId are in putData() so the service worker and
+            // the React onMessage handler can always read them.
+            // title/body are duplicated in putData() so the raw SW push handler
+            // (which reads raw.data) can also access them.
             Message message = Message.builder()
                     .setToken(sub.getFcmToken())
                     .setNotification(Notification.builder()
                             .setTitle(title)
                             .setBody(body)
                             .build())
+                    .putData("remindId", String.valueOf(remindId))
+                    .putData("caregiverId", String.valueOf(caregiverId))
+                    .putData("title", title)
+                    .putData("body", body)
                     .build();
             try {
                 String messageId = firebaseMessaging.send(message);

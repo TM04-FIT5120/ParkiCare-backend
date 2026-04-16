@@ -55,4 +55,16 @@ public interface MedicationReminderRepository extends JpaRepository<MedicationPl
             @Param("targetTime") LocalTime targetTime,
             @Param("targetDate") LocalDate targetDate);
 
+    /**
+     * Return all pending/snoozed plans for a caregiver across all their patients.
+     * Used by the frontend when an FCM notification arrives without data fields
+     * (FCM Web Push strips data — we fall back to polling the API).
+     */
+    @Query("SELECT m FROM MedicationPlan m " +
+           "JOIN Patient p ON m.patientId = p.id " +
+           "WHERE p.caregiverId = :caregiverId " +
+           "AND m.remindStatus IN (1, 3) AND m.isValid = 1 " +
+           "ORDER BY m.remindTime ASC")
+    List<MedicationPlan> findPendingByCaregiver(@Param("caregiverId") Long caregiverId);
+
 }
