@@ -13,5 +13,8 @@ public class PushSubscriptionRequest {
     @NotBlank(message = "fcmToken is required")
     private String fcmToken;
 
+    @NotBlank(message = "deviceId is required")
+    private String deviceId;
+
     private String deviceType;
 }

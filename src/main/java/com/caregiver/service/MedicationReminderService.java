@@ -4,6 +4,8 @@ import com.caregiver.entity.MedicationPlan;
 import com.caregiver.entity.Patient;
 import com.caregiver.repository.MedicationReminderRepository;
 import com.caregiver.repository.PatientRepository;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -13,6 +15,8 @@ import java.util.List;
 
 @Service
 public class MedicationReminderService {
+
+    private static final Logger log = LoggerFactory.getLogger(MedicationReminderService.class);
 
     private final MedicationReminderRepository medicationReminderRepository;
     private final PatientRepository patientRepository;
@@ -31,7 +35,9 @@ public class MedicationReminderService {
         verifyPatientOwnership(plan.getPatientId(), caregiverId);
 
         plan.setRemindStatus(2); // 2 = completed / confirmed
-        plan.setIsValid(0);      // completed, no longer pending
+        // plan.setIsValid(0);      // completed, no longer pending
+        // Keep isValid unchanged so popup confirm does not deactivate the row.
+        // Scheduler will not re-fire this row because due query only picks remindStatus = 0.
         plan.setSnoozeTime(null);
         medicationReminderRepository.save(plan);
 
@@ -66,7 +72,16 @@ public class MedicationReminderService {
 
     private LocalDate nextOccurrenceDate(LocalDate from, String recurrence) {
         return switch (recurrence.toLowerCase()) {
-            case "daily"   -> from.plusDays(1);
+            case "daily" -> from.plusDays(1);
+            case "weekdays" -> {
+                // Advance by one day then keep skipping until we land on Mon–Fri.
+                // getDayOfWeek().getValue() returns 6=Saturday, 7=Sunday.
+                LocalDate next = from.plusDays(1);
+                while (next.getDayOfWeek().getValue() >= 6) {
+                    next = next.plusDays(1);
+                }
+                yield next;
+            }
             case "weekly"  -> from.plusWeeks(1);
             case "monthly" -> from.plusMonths(1);
             default        -> null; // unknown recurrence pattern — do not auto-create
@@ -101,6 +116,20 @@ public class MedicationReminderService {
         verifyPatientOwnership(patientId, caregiverId);
         // 1 = pending, 3 = snoozed
         return medicationReminderRepository.findByPatientIdAndRemindStatusIn(patientId, List.of(1, 3));
+    }
+
+    /**
+     * Return all pending/snoozed reminders across every patient belonging to a caregiver.
+     * Used as a fallback when FCM Web Push strips the data payload — the frontend
+     * calls this endpoint on notification arrival to recover remindId and caregiverId.
+     */
+    public List<MedicationPlan> getPendingRemindersByCaregiver(Long caregiverId) {
+        List<MedicationPlan> results = medicationReminderRepository.findPendingByCaregiver(caregiverId);
+        log.info("[Reminder] getPendingRemindersByCaregiver caregiverId={} — found {} result(s): {}",
+                caregiverId,
+                results.size(),
+                results.stream().map(p -> "remindId=" + p.getRemindId() + " status=" + p.getRemindStatus()).toList());
+        return results;
     }
 
     private void verifyPatientOwnership(Long patientId, Long caregiverId) {

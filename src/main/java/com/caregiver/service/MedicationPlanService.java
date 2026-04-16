@@ -20,12 +20,11 @@ public class MedicationPlanService {
     }
 
     @Transactional
-    public MedicationPlan createMedicationPlan(Long patientId,
+    public List<MedicationPlan> createMedicationPlan(Long patientId,
                                                      Long drugId,
                                                      String dosage,
                                                      String frequency,
-                                                     LocalTime adminTimes,
-                                                     LocalTime remindTime,
+                                                     List<LocalTime> adminTimes,
                                                      LocalDate startDate,
                                                      String planNote,
                                                      String mealTiming,
@@ -45,37 +44,41 @@ public class MedicationPlanService {
         if (frequency == null || frequency.trim().isEmpty()) {
             throw new RuntimeException("Frequency cannot be empty");
         }
-        if (adminTimes == null) {
+        if (adminTimes == null || adminTimes.isEmpty()) {
             throw new RuntimeException("At least one administration time is required");
         }
         if (startDate == null) {
             throw new RuntimeException("Start date cannot be null");
         }
 
+        // All times for the same medication share one planId so they are grouped together.
         Long maxPlanId = medicationReminderRepository.findMaxPlanId();
         long nextPlanId = (maxPlanId == null) ? 1L : maxPlanId + 1L;
 
-        MedicationPlan plan = new MedicationPlan();
-        plan.setPlanId(nextPlanId);
-        plan.setPatientId(patientId);
-        plan.setDrugId(drugId);
-        plan.setDosage(dosage.trim());
-        plan.setFrequency(frequency.trim());
-        plan.setAdminTime(adminTimes);
-        plan.setRemindTime(remindTime);
-        plan.setStartDate(startDate);
-        plan.setIsOverdue(0);
-        plan.setSnoozeTime(null);
-        plan.setRemindStatus(0);
-        plan.setIsValid(1);
-        plan.setPlanNote(planNote);
-        plan.setMealTiming(mealTiming);
-        plan.setQuantity(quantity);
-        plan.setIntakeMethod(intakeMethod);
-        plan.setEndDate(endDate);
-        plan.setRecurrence(recurrence);
-
-        return medicationReminderRepository.save(plan);
+        List<MedicationPlan> created = new ArrayList<>();
+        for (LocalTime adminTime : adminTimes) {
+            MedicationPlan plan = new MedicationPlan();
+            plan.setPlanId(nextPlanId);
+            plan.setPatientId(patientId);
+            plan.setDrugId(drugId);
+            plan.setDosage(dosage.trim());
+            plan.setFrequency(frequency.trim());
+            plan.setAdminTime(adminTime);
+            plan.setRemindTime(adminTime); // each row fires at its own time
+            plan.setStartDate(startDate);
+            plan.setIsOverdue(0);
+            plan.setSnoozeTime(null);
+            plan.setRemindStatus(0);
+            plan.setIsValid(1);
+            plan.setPlanNote(planNote);
+            plan.setMealTiming(mealTiming);
+            plan.setQuantity(quantity);
+            plan.setIntakeMethod(intakeMethod);
+            plan.setEndDate(endDate);
+            plan.setRecurrence(recurrence);
+            created.add(medicationReminderRepository.save(plan));
+        }
+        return created;
     }
 
     public List<MedicationPlan> getPlansByPatient(Long patientId) {

@@ -10,5 +10,7 @@ public interface PushSubscriptionRepository extends JpaRepository<PushSubscripti
 
     List<PushSubscription> findByCaregiverIdAndIsActive(Long caregiverId, Boolean isActive);
 
+    Optional<PushSubscription> findByCaregiverIdAndDeviceId(Long caregiverId, String deviceId);
+
     Optional<PushSubscription> findByFcmToken(String fcmToken);
 }

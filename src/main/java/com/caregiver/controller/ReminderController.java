@@ -11,7 +11,9 @@ import org.springframework.web.bind.annotation.RequestParam;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/reminder")
@@ -35,16 +37,19 @@ public class ReminderController {
                 ? LocalDate.parse(request.getEndDate())
                 : null;
 
-        // adminTimes may be comma-separated (e.g. "08:00,20:00") - use the first time only
-        String firstAdminTime = request.getAdminTimes().split(",")[0].trim();
+        // Parse every comma-separated time and create one MedicationPlan row per time,
+        // all sharing the same planId so they are treated as one medication group.
+        List<LocalTime> adminTimes = Arrays.stream(request.getAdminTimes().split(","))
+                .map(String::trim)
+                .map(LocalTime::parse)
+                .collect(Collectors.toList());
 
-        return medicationPlanService.createMedicationPlan(
+        List<MedicationPlan> plans = medicationPlanService.createMedicationPlan(
                 request.getPatientId(),
                 request.getDrugId(),
                 request.getDosage(),
                 request.getFrequency(),
-                LocalTime.parse(firstAdminTime),
-                LocalTime.parse(request.getRemindTime()),
+                adminTimes,
                 LocalDate.parse(request.getStartDate()),
                 request.getPlanNote(),
                 request.getMealTiming(),
@@ -53,6 +58,8 @@ public class ReminderController {
                 endDate,
                 request.getRecurrence()
         );
+        // Return the first plan for frontend compatibility; all plans are persisted.
+        return plans.get(0);
     }
 
     @GetMapping("/patient/{patientId}")
@@ -76,6 +83,16 @@ public class ReminderController {
     public List<MedicationPlan> getPendingReminders(@PathVariable Long patientId,
                                                     @RequestParam Long caregiverId) {
         return medicationReminderService.getPendingReminders(patientId, caregiverId);
+    }
+
+    /**
+     * Fallback for FCM Web Push: returns all pending/snoozed reminders for a caregiver
+     * across all their patients. Called by the frontend when a push notification arrives
+     * without data fields (FCM Web Push strips the data payload).
+     */
+    @GetMapping("/pending/caregiver/{caregiverId}")
+    public List<MedicationPlan> getPendingRemindersByCaregiver(@PathVariable Long caregiverId) {
+        return medicationReminderService.getPendingRemindersByCaregiver(caregiverId);
     }
 
     @DeleteMapping("/{remindId}")
