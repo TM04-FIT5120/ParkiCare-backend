@@ -52,7 +52,7 @@ public class MedicationReminderScheduler {
         LocalTime oneMinuteAgo = now.minusMinutes(1);
         LocalDate today = LocalDate.now();
 
-        log.info("[Scheduler] Tick at {} — scanning window [{}, {}] for date {}", now, oneMinuteAgo, now, today);
+        log.info("[Scheduler] Tick at {} - scanning window [{}, {}] for date {}", now, oneMinuteAgo, now, today);
 
         // --- 1. Newly due reminders (remindStatus = 0) ---
         List<MedicationPlan> dueReminders = medicationReminderRepository

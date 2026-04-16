@@ -81,7 +81,7 @@ public class PushNotificationService {
         List<PushSubscription> tokens = pushSubscriptionRepository
                 .findByCaregiverIdAndIsActive(caregiverId, true);
 
-        log.info("[FCM] Sending to caregiverId={} remindId={} — {} active token(s)", caregiverId, remindId, tokens.size());
+        log.info("[FCM] Sending to caregiverId={} remindId={} - {} active token(s)", caregiverId, remindId, tokens.size());
 
         for (PushSubscription sub : tokens) {
             // Use setNotification() for the visible title/body so FCM does NOT
@@ -105,11 +105,11 @@ public class PushNotificationService {
                     .build();
             try {
                 String messageId = firebaseMessaging.send(message);
-                log.info("[FCM] Sent OK — tokenId={} messageId={}", sub.getId(), messageId);
+                log.info("[FCM] Sent OK - tokenId={} messageId={}", sub.getId(), messageId);
             } catch (FirebaseMessagingException e) {
                 if (MessagingErrorCode.UNREGISTERED.equals(e.getMessagingErrorCode())
                         || MessagingErrorCode.INVALID_ARGUMENT.equals(e.getMessagingErrorCode())) {
-                    log.warn("[FCM] Stale token deactivated — tokenId={} error={}", sub.getId(), e.getMessagingErrorCode());
+                    log.warn("[FCM] Stale token deactivated - tokenId={} error={}", sub.getId(), e.getMessagingErrorCode());
                     sub.setIsActive(false);
                     sub.setUpdatedAt(LocalDateTime.now());
                     pushSubscriptionRepository.save(sub);
@@ -117,7 +117,7 @@ public class PushNotificationService {
                     // Log full cause chain to identify the real underlying error
                     Throwable root = e;
                     while (root.getCause() != null) root = root.getCause();
-                    log.error("[FCM] Send failed — tokenId={} error={} message={} rootCause={}",
+                    log.error("[FCM] Send failed - tokenId={} error={} message={} rootCause={}",
                             sub.getId(), e.getMessagingErrorCode(), e.getMessage(), root.toString(), e);
                 }
             }

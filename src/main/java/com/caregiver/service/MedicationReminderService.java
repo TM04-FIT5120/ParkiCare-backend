@@ -84,7 +84,7 @@ public class MedicationReminderService {
             }
             case "weekly"  -> from.plusWeeks(1);
             case "monthly" -> from.plusMonths(1);
-            default        -> null; // unknown recurrence pattern — do not auto-create
+            default        -> null; // unknown recurrence pattern - do not auto-create
         };
     }
 
@@ -120,12 +120,12 @@ public class MedicationReminderService {
 
     /**
      * Return all pending/snoozed reminders across every patient belonging to a caregiver.
-     * Used as a fallback when FCM Web Push strips the data payload — the frontend
+     * Used as a fallback when FCM Web Push strips the data payload - the frontend
      * calls this endpoint on notification arrival to recover remindId and caregiverId.
      */
     public List<MedicationPlan> getPendingRemindersByCaregiver(Long caregiverId) {
         List<MedicationPlan> results = medicationReminderRepository.findPendingByCaregiver(caregiverId);
-        log.info("[Reminder] getPendingRemindersByCaregiver caregiverId={} — found {} result(s): {}",
+        log.info("[Reminder] getPendingRemindersByCaregiver caregiverId={} - found {} result(s): {}",
                 caregiverId,
                 results.size(),
                 results.stream().map(p -> "remindId=" + p.getRemindId() + " status=" + p.getRemindStatus()).toList());

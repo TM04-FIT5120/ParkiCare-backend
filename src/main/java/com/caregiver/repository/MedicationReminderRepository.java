@@ -58,7 +58,7 @@ public interface MedicationReminderRepository extends JpaRepository<MedicationPl
     /**
      * Return all pending/snoozed plans for a caregiver across all their patients.
      * Used by the frontend when an FCM notification arrives without data fields
-     * (FCM Web Push strips data — we fall back to polling the API).
+     * (FCM Web Push strips data - we fall back to polling the API).
      */
     @Query("SELECT m FROM MedicationPlan m " +
            "JOIN Patient p ON m.patientId = p.id " +
