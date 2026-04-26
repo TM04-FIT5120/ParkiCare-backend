@@ -39,4 +39,7 @@ public class DrugBase {
 
     @Column(name = "remark", length = 200)
     private String remark;
+
+    @Column(name = "interval_minutes")
+    private Integer intervalMinutes;
 }

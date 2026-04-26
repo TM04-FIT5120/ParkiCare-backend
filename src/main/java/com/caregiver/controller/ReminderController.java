@@ -8,6 +8,7 @@ import com.caregiver.service.MedicationReminderService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.bind.annotation.RequestParam;
+import com.caregiver.dto.AutoMedicationPlanRequest;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -129,6 +130,12 @@ public class ReminderController {
     @GetMapping("/medicationPlan/plus5")
     public List<MedicationPlan> getMedicationPlansPlus5() {
         return medicationPlanService.getPlansRemindTimePlus5();
+    }
+
+    @PostMapping("/plan/auto")
+    public List<MedicationPlan> autoCreateMedicationPlan(
+            @RequestBody AutoMedicationPlanRequest request) {
+        return medicationPlanService.autoCreateMedicationPlan(request);
     }
 
 }
