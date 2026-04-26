@@ -1,6 +1,5 @@
 package com.caregiver.repository;
 
-
 import com.caregiver.entity.FoodNutrition;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -15,4 +14,23 @@ public interface FoodNutritionRepository extends JpaRepository<FoodNutrition, Lo
     List<FoodNutrition> findByFoodNameContainingIgnoreCase(String foodName);
 
     List<FoodNutrition> findByCategoryAndSafetyStatus(String category, String safetyStatus);
+
+    List<FoodNutrition> findByCategoryAndSafetyStatusAndFoodNameContainingIgnoreCase(
+            String category,
+            String safetyStatus,
+            String foodName
+    );
+
+    List<FoodNutrition> findByCategoryAndFoodNameContainingIgnoreCase(
+            String category,
+            String foodName
+    );
+
+    List<FoodNutrition> findBySafetyStatusAndFoodNameContainingIgnoreCase(
+            String safetyStatus,
+            String foodName
+    );
+
+    List<FoodNutrition> findByFoodNameIn(List<String> foodNames);
+
 }
