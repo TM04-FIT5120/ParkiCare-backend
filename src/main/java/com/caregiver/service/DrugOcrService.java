@@ -45,7 +45,7 @@ public class DrugOcrService {
         systemMsg.put(
                 "content",
                 "你是专业药品OCR识别器。只输出纯JSON，无任何多余内容。" +
-                        "固定返回JSON结构：{\"medicineName\":\"药品名\",\"capacity\":\"容量\",\"manufacturer\":\"生产商\"}。" +
+                        "固定返回JSON结构：{\"medicineName\":\"药品名\",\"quantity\":\"容量\",\"manufacturer\":\"生产商\"}。" +
                         "识别不到的值必须设为null，不能是空字符串，不能有换行符。"
         );
 
