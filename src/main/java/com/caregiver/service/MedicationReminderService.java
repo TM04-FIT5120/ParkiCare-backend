@@ -88,17 +88,76 @@ public class MedicationReminderService {
         };
     }
 
+//    @Transactional
+//    public MedicationPlan snoozeReminder(Long remindId, Long caregiverId) {
+//        MedicationPlan plan = medicationReminderRepository.findByRemindId(remindId)
+//                .orElseThrow(() -> new RuntimeException("Reminder not found"));
+//
+//        verifyPatientOwnership(plan.getPatientId(), caregiverId);
+//
+//        plan.setRemindStatus(3); // 3 = snoozed / later
+//        plan.setSnoozeTime(LocalDateTime.now().plusMinutes(5));
+//
+//        return medicationReminderRepository.save(plan);
+//    }
+
     @Transactional
     public MedicationPlan snoozeReminder(Long remindId, Long caregiverId) {
+
+        // Retrieve the reminder record by reminder ID
         MedicationPlan plan = medicationReminderRepository.findByRemindId(remindId)
                 .orElseThrow(() -> new RuntimeException("Reminder not found"));
 
+        // Verify that the caregiver has access to this patient
         verifyPatientOwnership(plan.getPatientId(), caregiverId);
 
-        plan.setRemindStatus(3); // 3 = snoozed / later
-        plan.setSnoozeTime(LocalDateTime.now().plusMinutes(5));
+        // Get the original scheduled date and time
+        LocalDateTime oldDateTime =
+                LocalDateTime.of(plan.getStartDate(), plan.getRemindTime());
 
-        return medicationReminderRepository.save(plan);
+        // Define the delay duration. Currently fixed at 5 minutes.
+        long delayMinutes = 5;
+
+        // Calculate the new scheduled time for the current reminder
+        LocalDateTime newDateTime = oldDateTime.plusMinutes(delayMinutes);
+
+        // Mark the current reminder as snoozed
+        plan.setRemindStatus(3);
+
+        // Set the temporary snooze trigger time
+        plan.setSnoozeTime(newDateTime);
+
+        // Update the actual reminder schedule time
+        // This ensures the scheduler will use the new reminder time
+        plan.setStartDate(newDateTime.toLocalDate());
+        plan.setRemindTime(newDateTime.toLocalTime());
+
+        medicationReminderRepository.save(plan);
+
+        // Find subsequent reminders under the same medication plan
+        List<MedicationPlan> followingPlans =
+                medicationReminderRepository.findFollowingRemindersByPlanId(
+                        plan.getPlanId(),
+                        oldDateTime.toLocalDate(),
+                        oldDateTime.toLocalTime()
+                );
+
+        // Shift all following reminders by the same delay duration
+        for (MedicationPlan following : followingPlans) {
+
+            LocalDateTime followingOldDateTime =
+                    LocalDateTime.of(following.getStartDate(), following.getRemindTime());
+
+            LocalDateTime followingNewDateTime =
+                    followingOldDateTime.plusMinutes(delayMinutes);
+
+            following.setStartDate(followingNewDateTime.toLocalDate());
+            following.setRemindTime(followingNewDateTime.toLocalTime());
+
+            medicationReminderRepository.save(following);
+        }
+
+        return plan;
     }
 
     @Transactional

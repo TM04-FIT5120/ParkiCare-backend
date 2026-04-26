@@ -67,4 +67,20 @@ public interface MedicationReminderRepository extends JpaRepository<MedicationPl
            "ORDER BY m.remindTime ASC")
     List<MedicationPlan> findPendingByCaregiver(@Param("caregiverId") Long caregiverId);
 
+
+    @Query("""
+    SELECT m FROM MedicationPlan m
+    WHERE m.planId = :planId
+      AND m.startDate = :date
+      AND m.remindTime > :remindTime
+      AND m.isValid = 1
+      AND m.remindStatus IN (0, 1, 3)
+    ORDER BY m.remindTime ASC
+""")
+    List<MedicationPlan> findFollowingRemindersByPlanId(
+            @Param("planId") Long planId,
+            @Param("date") LocalDate date,
+            @Param("remindTime") LocalTime remindTime
+    );
+
 }
