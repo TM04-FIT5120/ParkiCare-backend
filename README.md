@@ -58,10 +58,10 @@ This project is configured with multi-environment support (`dev` and `prod`) to 
 ### Configuration File Structure
 
 - `src/main/resources/`
-    - `application.properties`: A common configuration file that activates the `dev` profile by default.
+    - `application.properties`: A common configuration file. Current default active profile is `prod`.
     - `application-dev.properties`: **For local development**. Used to connect to a **remote database**. **This file should NOT be committed to version control**.
     - `application-prod.properties`: **For production deployment**. Used to connect to the **local database** (`localhost`) on the server.
-    - `firebase-service-account.json`: The credential file for the Firebase service.
+    - Firebase credentials are loaded by file path from `firebase.key.path` (profile-specific property).
 
 ### How to Run the Project
 
@@ -70,7 +70,8 @@ This project is configured with multi-environment support (`dev` and `prod`) to 
 1.  **Configure `application-dev.properties`**:
     - Fill in the public IP, username, and password for your remote database.
 2.  **Configure Firebase**:
-    - Place your Firebase service account key file, renamed to `firebase-service-account.json`, in the `src/main/resources/` directory.
+    - Set `firebase.key.path` to your local Firebase service account file path.
+    
 3.  **Run the Application**:
     - In your IDE, locate and run the `CaregiverTaskSystemApplication.java` file.
     - The application will start in `dev` mode and connect to the remote database you configured.
@@ -84,7 +85,9 @@ This project is configured with multi-environment support (`dev` and `prod`) to 
     This command will generate a `.jar` file in the `target/` directory.
 
 2.  **Upload and Run**:
-    - Upload the generated `.jar` file and the `firebase-service-account.json` file to your cloud server.
+    - Upload the generated `.jar` file to your cloud server.
+    - Ensure `application-prod.properties` contains the correct Firebase key file path.
+    - Example: `firebase.key.path=/home/ec2-user/secrets/firebase-service-account.json`
     - Use the following command to start the application, explicitly activating the `prod` profile:
     ```bash
     java -jar caregiver-task-system-0.0.1-SNAPSHOT.jar --spring.profiles.active=prod

@@ -25,13 +25,13 @@ public class FoodNutritionController {
         return foodNutritionService.getFoodById(id);
     }
 
-    @GetMapping("/category/{category}")
-    public List<FoodNutrition> getFoodsByCategory(@PathVariable String category) {
+    @GetMapping("/category")
+    public List<FoodNutrition> getFoodsByCategory(@RequestParam String category) {
         return foodNutritionService.getFoodsByCategory(category);
     }
 
-    @GetMapping("/status/{safetyStatus}")
-    public List<FoodNutrition> getFoodsBySafetyStatus(@PathVariable String safetyStatus) {
+    @GetMapping("/status")
+    public List<FoodNutrition> getFoodsBySafetyStatus(@RequestParam String safetyStatus) {
         return foodNutritionService.getFoodsBySafetyStatus(safetyStatus);
     }
 

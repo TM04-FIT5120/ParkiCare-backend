@@ -120,15 +120,18 @@ public class MedicationPlanService {
         if (request.getPatientId() == null) {
             throw new RuntimeException("Patient ID cannot be null");
         }
-
         if (request.getDrugId() == null) {
             throw new RuntimeException("Drug ID cannot be null");
         }
-
-        if (request.getStartDateTime() == null || request.getStartDateTime().trim().isEmpty()) {
-            throw new RuntimeException("Start datetime cannot be empty");
+        if (request.getStartDate() == null || request.getStartDate().trim().isEmpty()) {
+            throw new RuntimeException("Start date cannot be empty");
         }
-
+        if (request.getEndDate() == null || request.getEndDate().trim().isEmpty()) {
+            throw new RuntimeException("End date cannot be empty");
+        }
+        if (request.getDailyStartTime() == null || request.getDailyStartTime().trim().isEmpty()) {
+            throw new RuntimeException("Daily start time cannot be empty");
+        }
         if (request.getTimesPerDay() == null || request.getTimesPerDay() <= 0) {
             throw new RuntimeException("Times per day must be greater than 0");
         }
@@ -156,45 +159,65 @@ public class MedicationPlanService {
             frequency = request.getTimesPerDay() + " times per day";
         }
 
-        DateTimeFormatter formatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
-        LocalDateTime startDateTime = LocalDateTime.parse(request.getStartDateTime(), formatter);
+        LocalDate startDate = LocalDate.parse(request.getStartDate());
+        LocalDate endDate = LocalDate.parse(request.getEndDate());
+        LocalTime dailyStartTime = LocalTime.parse(request.getDailyStartTime());
 
-        List<LocalTime> adminTimes = new ArrayList<>();
-
-        for (int i = 0; i < request.getTimesPerDay(); i++) {
-            LocalDateTime current = startDateTime.plusMinutes(
-                    (long) i * drug.getIntervalMinutes()
-            );
-
-            adminTimes.add(
-                    current.toLocalTime().withSecond(0).withNano(0)
-            );
-        }
-
-        LocalDate endDate = null;
-        if (request.getEndDate() != null && !request.getEndDate().isBlank()) {
-            endDate = LocalDate.parse(request.getEndDate());
+        if (endDate.isBefore(startDate)) {
+            throw new RuntimeException("End date cannot be before start date");
         }
 
         String recurrence = request.getRecurrence();
         if (recurrence == null || recurrence.trim().isEmpty()) {
-            recurrence = "none";
+            recurrence = "daily";
         }
 
-        return createMedicationPlan(
-                request.getPatientId(),
-                request.getDrugId(),
-                dosage,
-                frequency,
-                adminTimes,
-                startDateTime.toLocalDate(),
-                request.getPlanNote(),
-                request.getMealTiming(),
-                request.getQuantity(),
-                request.getIntakeMethod(),
-                endDate,
-                recurrence
-        );
+        Long maxPlanId = medicationReminderRepository.findMaxPlanId();
+        long planId = (maxPlanId == null) ? 1L : maxPlanId + 1L;
+
+        List<MedicationPlan> created = new ArrayList<>();
+
+        LocalDate currentDate = startDate;
+
+        while (!currentDate.isAfter(endDate)) {
+
+            for (int i = 0; i < request.getTimesPerDay(); i++) {
+
+                LocalDateTime currentDateTime = LocalDateTime.of(currentDate, dailyStartTime)
+                        .plusMinutes((long) i * drug.getIntervalMinutes());
+
+                MedicationPlan plan = new MedicationPlan();
+
+                plan.setPlanId(planId);
+                plan.setPatientId(request.getPatientId());
+                plan.setDrugId(request.getDrugId());
+
+                plan.setDosage(dosage.trim());
+                plan.setFrequency(frequency.trim());
+
+                plan.setStartDate(currentDateTime.toLocalDate());
+                plan.setAdminTime(currentDateTime.toLocalTime().withSecond(0).withNano(0));
+                plan.setRemindTime(currentDateTime.toLocalTime().withSecond(0).withNano(0));
+
+                plan.setIsOverdue(0);
+                plan.setSnoozeTime(null);
+                plan.setRemindStatus(0);
+                plan.setIsValid(1);
+
+                plan.setPlanNote(request.getPlanNote());
+                plan.setMealTiming(request.getMealTiming());
+                plan.setQuantity(request.getQuantity());
+                plan.setIntakeMethod(request.getIntakeMethod());
+                plan.setEndDate(endDate);
+                plan.setRecurrence(recurrence);
+
+                created.add(plan);
+            }
+
+            currentDate = currentDate.plusDays(1);
+        }
+
+        return medicationReminderRepository.saveAll(created);
     }
 
 }
