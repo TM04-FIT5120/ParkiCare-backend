@@ -282,12 +282,12 @@ public class MedicationReportService {
 
             document.add(new Paragraph("Medication Summary", sectionFont));
 
-            PdfPTable medicationTable = new PdfPTable(7);
+            // Removed "Drug ID" column (was 7 columns); keep only human-readable drug name and metrics.
+            PdfPTable medicationTable = new PdfPTable(6);
             medicationTable.setWidthPercentage(100);
 
             addTableHeader(
                     medicationTable,
-                    "Drug ID",
                     "Drug Name",
                     "Target",
                     "Actual",
@@ -297,7 +297,6 @@ public class MedicationReportService {
             );
 
             for (MedicationSummaryDTO item : report.getMedicationSummaries()) {
-                medicationTable.addCell(new Phrase(String.valueOf(item.getDrugId()), tableFont));
                 medicationTable.addCell(new Phrase(item.getDrugName(), tableFont));
                 medicationTable.addCell(new Phrase(String.valueOf(item.getTargetCount()), tableFont));
                 medicationTable.addCell(new Phrase(String.valueOf(item.getActualCount()), tableFont));
@@ -338,13 +337,13 @@ public class MedicationReportService {
 
             document.add(new Paragraph("Daily Medication Breakdown", sectionFont));
 
-            PdfPTable breakdownTable = new PdfPTable(7);
+            // Removed "Drug ID" column (was 7 columns); keep date + drug name + metrics.
+            PdfPTable breakdownTable = new PdfPTable(6);
             breakdownTable.setWidthPercentage(100);
 
             addTableHeader(
                     breakdownTable,
                     "Date",
-                    "Drug ID",
                     "Drug Name",
                     "Target Frequency",
                     "Actual Count",
@@ -354,7 +353,6 @@ public class MedicationReportService {
 
             for (DailyMedicationDTO item : report.getDailyBreakdown()) {
                 breakdownTable.addCell(new Phrase(item.getDate(), tableFont));
-                breakdownTable.addCell(new Phrase(String.valueOf(item.getDrugId()), tableFont));
                 breakdownTable.addCell(new Phrase(item.getDrugName(), tableFont));
                 breakdownTable.addCell(new Phrase(String.valueOf(item.getTargetFrequency()), tableFont));
                 breakdownTable.addCell(new Phrase(String.valueOf(item.getActualCount()), tableFont));
