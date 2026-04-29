@@ -6,6 +6,6 @@ import lombok.Data;
 public class DrugOcrVO {
 
     private String medicineName;
-    private String capacity;
+    private String quantity;
     private String manufacturer;
 }

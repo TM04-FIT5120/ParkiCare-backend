@@ -36,20 +36,40 @@ public class FoodNutritionService {
 
     public List<FoodNutrition> filterFoods(String category, String safetyStatus, String keyword) {
 
-        if (keyword != null && !keyword.trim().isEmpty()) {
-            return searchFoodsByName(keyword);
+        boolean hasCategory = category != null && !category.trim().isEmpty();
+        boolean hasSafetyStatus = safetyStatus != null && !safetyStatus.trim().isEmpty();
+        boolean hasKeyword = keyword != null && !keyword.trim().isEmpty();
+
+        if (hasCategory && hasSafetyStatus && hasKeyword) {
+            return foodNutritionRepository
+                    .findByCategoryAndSafetyStatusAndFoodNameContainingIgnoreCase(
+                            category, safetyStatus, keyword
+                    );
         }
 
-        if (category != null && !category.trim().isEmpty()
-                && safetyStatus != null && !safetyStatus.trim().isEmpty()) {
+        if (hasCategory && hasSafetyStatus) {
             return foodNutritionRepository.findByCategoryAndSafetyStatus(category, safetyStatus);
         }
 
-        if (category != null && !category.trim().isEmpty()) {
+        if (hasCategory && hasKeyword) {
+            return foodNutritionRepository
+                    .findByCategoryAndFoodNameContainingIgnoreCase(category, keyword);
+        }
+
+        if (hasSafetyStatus && hasKeyword) {
+            return foodNutritionRepository
+                    .findBySafetyStatusAndFoodNameContainingIgnoreCase(safetyStatus, keyword);
+        }
+
+        if (hasKeyword) {
+            return searchFoodsByName(keyword);
+        }
+
+        if (hasCategory) {
             return getFoodsByCategory(category);
         }
 
-        if (safetyStatus != null && !safetyStatus.trim().isEmpty()) {
+        if (hasSafetyStatus) {
             return getFoodsBySafetyStatus(safetyStatus);
         }
 
