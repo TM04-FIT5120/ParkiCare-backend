@@ -282,12 +282,12 @@ public class MedicationReportService {
 
             document.add(new Paragraph("Medication Summary", sectionFont));
 
-            PdfPTable medicationTable = new PdfPTable(7);
+            // Removed "Drug ID" column (was 7 columns); keep only human-readable drug name and metrics.
+            PdfPTable medicationTable = new PdfPTable(6);
             medicationTable.setWidthPercentage(100);
 
             addTableHeader(
                     medicationTable,
-                    "Drug ID",
                     "Drug Name",
                     "Target",
                     "Actual",
@@ -297,7 +297,6 @@ public class MedicationReportService {
             );
 
             for (MedicationSummaryDTO item : report.getMedicationSummaries()) {
-                medicationTable.addCell(new Phrase(String.valueOf(item.getDrugId()), tableFont));
                 medicationTable.addCell(new Phrase(item.getDrugName(), tableFont));
                 medicationTable.addCell(new Phrase(String.valueOf(item.getTargetCount()), tableFont));
                 medicationTable.addCell(new Phrase(String.valueOf(item.getActualCount()), tableFont));
@@ -338,13 +337,13 @@ public class MedicationReportService {
 
             document.add(new Paragraph("Daily Medication Breakdown", sectionFont));
 
-            PdfPTable breakdownTable = new PdfPTable(7);
+            // Removed "Drug ID" column (was 7 columns); keep date + drug name + metrics.
+            PdfPTable breakdownTable = new PdfPTable(6);
             breakdownTable.setWidthPercentage(100);
 
             addTableHeader(
                     breakdownTable,
                     "Date",
-                    "Drug ID",
                     "Drug Name",
                     "Target Frequency",
                     "Actual Count",
@@ -354,7 +353,6 @@ public class MedicationReportService {
 
             for (DailyMedicationDTO item : report.getDailyBreakdown()) {
                 breakdownTable.addCell(new Phrase(item.getDate(), tableFont));
-                breakdownTable.addCell(new Phrase(String.valueOf(item.getDrugId()), tableFont));
                 breakdownTable.addCell(new Phrase(item.getDrugName(), tableFont));
                 breakdownTable.addCell(new Phrase(String.valueOf(item.getTargetFrequency()), tableFont));
                 breakdownTable.addCell(new Phrase(String.valueOf(item.getActualCount()), tableFont));
@@ -363,6 +361,82 @@ public class MedicationReportService {
             }
 
             document.add(breakdownTable);
+
+            // --- Medication Plan Details (per your requirement) ---
+            // Show all medication_plan records that match the same patient + date range used by the report statistics.
+            document.add(new Paragraph(" "));
+            document.add(new Paragraph("Medication Plan Details", sectionFont));
+
+            LocalDate pdfStartDate = LocalDate.parse(report.getStartDate());
+            LocalDate pdfEndDate = LocalDate.parse(report.getEndDate());
+
+            List<MedicationPlan> detailPlans = medicationPlanRepository
+                    .findByPatientIdAndStartDateBetweenAndIsValid(
+                            report.getPatientId(),
+                            pdfStartDate,
+                            pdfEndDate,
+                            1
+                    );
+
+            detailPlans.sort(
+                    Comparator.comparing(MedicationPlan::getStartDate)
+                            .thenComparing(MedicationPlan::getAdminTime)
+                            .thenComparing(MedicationPlan::getDrugId)
+            );
+
+            List<Long> detailDrugIds = detailPlans.stream()
+                    .map(MedicationPlan::getDrugId)
+                    .distinct()
+                    .toList();
+
+            Map<Long, DrugBase> detailDrugMap = drugBaseRepository
+                    .findByDrugIdIn(detailDrugIds)
+                    .stream()
+                    .collect(Collectors.toMap(DrugBase::getDrugId, d -> d));
+
+            PdfPTable detailTable = new PdfPTable(9);
+            detailTable.setWidthPercentage(100);
+
+            addTableHeader(
+                    detailTable,
+                    "Drug Name",
+                    "Drug Company",
+                    "Dosage",
+                    "Frequency",
+                    "Quantity",
+                    "Administered time",
+                    "Meal timing",
+                    "Remind Status",
+                    "Notes"
+            );
+
+            for (MedicationPlan p : detailPlans) {
+                DrugBase drug = detailDrugMap.get(p.getDrugId());
+
+                String drugName = drug == null ? "" : nullSafeToString(drug.getDrugName());
+                String drugCompany = drug == null ? "" : nullSafeToString(drug.getManufacturerName());
+                String dosage = p.getDosage() == null ? "" : p.getDosage();
+                String frequency = p.getFrequency() == null ? "" : p.getFrequency();
+                String quantity = p.getQuantity() == null ? "" : String.valueOf(p.getQuantity());
+                String adminTime = p.getAdminTime() == null ? "" : p.getAdminTime().toString();
+                String mealTiming = p.getMealTiming() == null ? "" : p.getMealTiming();
+                String remindStatus = (p.getRemindStatus() != null && p.getRemindStatus() == 1)
+                        ? "complete"
+                        : "incomplete";
+                String notes = p.getPlanNote() == null ? "" : p.getPlanNote();
+
+                detailTable.addCell(new Phrase(drugName, tableFont));
+                detailTable.addCell(new Phrase(drugCompany, tableFont));
+                detailTable.addCell(new Phrase(dosage, tableFont));
+                detailTable.addCell(new Phrase(frequency, tableFont));
+                detailTable.addCell(new Phrase(quantity, tableFont));
+                detailTable.addCell(new Phrase(adminTime, tableFont));
+                detailTable.addCell(new Phrase(mealTiming, tableFont));
+                detailTable.addCell(new Phrase(remindStatus, tableFont));
+                detailTable.addCell(new Phrase(notes, tableFont));
+            }
+
+            document.add(detailTable);
 
             document.close();
 
@@ -395,5 +469,9 @@ public class MedicationReportService {
         }
 
         return String.format("%.1f", rate);
+    }
+
+    private String nullSafeToString(String value) {
+        return value == null ? "" : value;
     }
 }
