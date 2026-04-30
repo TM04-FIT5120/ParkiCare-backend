@@ -9,4 +9,5 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 public class RecipeGenerateRequest {
     private List<String> foods;
+    private Long caregiverId;
 }

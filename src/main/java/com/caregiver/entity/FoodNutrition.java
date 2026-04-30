@@ -15,47 +15,51 @@ public class FoodNutrition {
     private Long id;
 
     // Food name
-    @Column(name = "food_name", nullable = false)
+    @Column(name = "foodname")
     private String foodName;
 
+    // Normalized food name
+    @Column(name = "normalized_foodname")
+    private String normalizedFoodname;
+
     // Food category
-    @Column(name = "category", nullable = false)
+    @Column(name = "category")
     private String category;
 
-    // Safety status: Recommended / Avoid / Caution
-    @Column(name = "safety_status", nullable = false)
+    // Safety status: Safe / Recommended / Avoid / Caution
+    @Column(name = "safetystatus")
     private String safetyStatus;
 
     // Serving unit
-    @Column(name = "measure", nullable = false)
+    @Column(name = "measure")
     private String measure;
 
     // Serving weight in grams
-    @Column(name = "grams", nullable = false)
+    @Column(name = "grams")
     private BigDecimal grams;
 
     // Calories per serving
-    @Column(name = "calories", nullable = false)
-    private Integer calories;
+    @Column(name = "calories")
+    private BigDecimal calories;
 
     // Protein per 100g
-    @Column(name = "protein_100g", nullable = false)
+    @Column(name = "protein_100g")
     private BigDecimal protein100g;
 
     // Saturated fat per 100g
-    @Column(name = "saturated_fats_100g", nullable = false)
+    @Column(name = "saturatedfats_100g")
     private BigDecimal saturatedFats100g;
 
     // Total fat per 100g
-    @Column(name = "fat_100g", nullable = false)
+    @Column(name = "fat_100g")
     private BigDecimal fat100g;
 
     // Dietary fiber per 100g
-    @Column(name = "fiber_100g", nullable = false)
+    @Column(name = "fiber_100g")
     private BigDecimal fiber100g;
 
     // Carbohydrates per 100g
-    @Column(name = "carbs_100g", nullable = false)
+    @Column(name = "carbs_100g")
     private BigDecimal carbs100g;
 
     // Health guidance for Parkinson patients
