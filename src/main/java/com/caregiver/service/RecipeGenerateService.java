@@ -2,7 +2,9 @@ package com.caregiver.service;
 
 import com.caregiver.dto.RecipeGenerateRequest;
 import com.caregiver.entity.FoodNutrition;
+import com.caregiver.entity.GeneratedRecipe;
 import com.caregiver.repository.FoodNutritionRepository;
+import com.caregiver.repository.GeneratedRecipeRepository;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import lombok.RequiredArgsConstructor;
@@ -13,6 +15,7 @@ import org.springframework.web.client.RestTemplate;
 import java.math.BigDecimal;
 import java.util.List;
 import java.util.Map;
+import java.util.stream.Collectors;
 
 @Service
 @RequiredArgsConstructor
@@ -24,19 +27,25 @@ public class RecipeGenerateService {
     private static final String API_KEY =
             "sk-19d91080507147f1ac178c93e8936aa6";
 
+    private static final String HIGH_PROTEIN_WARNING =
+            "This meal contains high protein. To ensure Levodopa efficacy, serve 1 hour after medication.";
+
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private final FoodNutritionRepository foodNutritionRepository;
+    private final GeneratedRecipeRepository generatedRecipeRepository;
 
-    public String generateRecipe(RecipeGenerateRequest request) {
+    public Map<String, Object> generateRecipe(RecipeGenerateRequest request) {
 
         if (request == null || request.getFoods() == null || request.getFoods().isEmpty()) {
             throw new RuntimeException("Food list cannot be empty");
         }
 
         List<String> foods = request.getFoods();
+        Long caregiverId = request.getCaregiverId();
 
         boolean hasHighProtein = hasHighProteinFood(foods);
+        String referenceSource = hasHighProtein ? getHighProteinSources(foods) : null;
 
         try {
             RestTemplate restTemplate = new RestTemplate();
@@ -80,27 +89,68 @@ public class RecipeGenerateService {
             );
 
             JsonNode root = objectMapper.readTree(response.getBody());
-
-            return root
+            String aiContent = root
                     .path("choices")
                     .get(0)
                     .path("message")
                     .path("content")
                     .asText();
 
+            persistRecipes(aiContent, foods, caregiverId, hasHighProtein, referenceSource);
+
+            return Map.of(
+                    "recipes", objectMapper.readTree(aiContent).path("recipes"),
+                    "highProteinWarning", hasHighProtein ? HIGH_PROTEIN_WARNING : "",
+                    "referenceSource", referenceSource != null ? referenceSource : ""
+            );
+
         } catch (Exception e) {
             throw new RuntimeException("Failed to generate recipe: " + e.getMessage());
         }
     }
 
+    private void persistRecipes(String aiContent, List<String> foods, Long caregiverId,
+                                boolean hasHighProtein, String referenceSource) {
+        try {
+            JsonNode recipesNode = objectMapper.readTree(aiContent).path("recipes");
+            String inputFoods = String.join(", ", foods);
+
+            for (JsonNode recipeNode : recipesNode) {
+                GeneratedRecipe recipe = new GeneratedRecipe();
+                recipe.setCaregiverId(caregiverId);
+                recipe.setInputFoods(inputFoods);
+                recipe.setRecipeTitle(recipeNode.path("recipeTitle").asText());
+                recipe.setIngredients(recipeNode.path("ingredients").toString());
+                recipe.setSteps(recipeNode.path("steps").toString());
+                recipe.setSuitableDesc(recipeNode.path("suitableDesc").asText());
+                recipe.setUnsuitableDesc(recipeNode.path("unsuitableDesc").asText());
+                recipe.setHealthTip(recipeNode.path("healthTip").asText());
+                recipe.setHighProteinWarning(hasHighProtein ? HIGH_PROTEIN_WARNING : null);
+                recipe.setReferenceSource(referenceSource);
+                generatedRecipeRepository.save(recipe);
+            }
+        } catch (Exception e) {
+            // Persistence failure should not block the response
+        }
+    }
+
     private boolean hasHighProteinFood(List<String> foods) {
-
         List<FoodNutrition> foodList = foodNutritionRepository.findByFoodNameIn(foods);
-
         return foodList.stream().anyMatch(food ->
                 "Caution".equalsIgnoreCase(food.getSafetyStatus())
                         || food.getProtein100g().compareTo(BigDecimal.valueOf(12)) > 0
         );
+    }
+
+    private String getHighProteinSources(List<String> foods) {
+        List<FoodNutrition> foodList = foodNutritionRepository.findByFoodNameIn(foods);
+        return foodList.stream()
+                .filter(food -> "Caution".equalsIgnoreCase(food.getSafetyStatus())
+                        || food.getProtein100g().compareTo(BigDecimal.valueOf(12)) > 0)
+                .map(FoodNutrition::getSource)
+                .filter(source -> source != null && !source.isBlank())
+                .distinct()
+                .collect(Collectors.joining("; "));
     }
 
     private String buildPrompt(List<String> foods, boolean hasHighProtein) {

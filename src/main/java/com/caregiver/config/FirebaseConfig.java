@@ -12,6 +12,7 @@ import org.springframework.util.StringUtils;
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.nio.charset.StandardCharsets;
@@ -46,9 +47,18 @@ public class FirebaseConfig {
 
     private String resolveFirebaseKey() throws IOException {
         if (StringUtils.hasText(firebaseKeyPath)) {
-            String fileContent = Files.readString(Path.of(firebaseKeyPath), StandardCharsets.UTF_8);
-            if (StringUtils.hasText(fileContent)) {
-                return fileContent;
+            String content;
+            if (firebaseKeyPath.startsWith("classpath:")) {
+                String resourcePath = firebaseKeyPath.substring("classpath:".length());
+                try (InputStream is = getClass().getClassLoader().getResourceAsStream(resourcePath)) {
+                    if (is == null) return null;
+                    content = new String(is.readAllBytes(), StandardCharsets.UTF_8);
+                }
+            } else {
+                content = Files.readString(Path.of(firebaseKeyPath), StandardCharsets.UTF_8);
+            }
+            if (StringUtils.hasText(content)) {
+                return content;
             }
         }
         return null;
