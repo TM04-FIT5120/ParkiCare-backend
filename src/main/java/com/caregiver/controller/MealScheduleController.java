@@ -21,6 +21,11 @@ public class MealScheduleController {
         return mealScheduleService.getMealSchedules(caregiverId);
     }
 
+    @PostMapping("/caregiver/{caregiverId}/refresh-predictions")
+    public List<MealScheduleResponse> refreshPredictedMealTimes(@PathVariable Long caregiverId) {
+        return mealScheduleService.refreshPredictedMealTimes(caregiverId);
+    }
+
     @PutMapping("/caregiver/{caregiverId}/meal/{mealType}")
     public MealScheduleResponse updateMealTime(
             @PathVariable Long caregiverId,
