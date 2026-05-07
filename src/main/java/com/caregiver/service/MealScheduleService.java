@@ -5,6 +5,7 @@ import com.caregiver.entity.CaregiverSchedule;
 import com.caregiver.entity.MealSchedule;
 import com.caregiver.repository.CaregiverScheduleRepository;
 import com.caregiver.repository.MealScheduleRepository;
+import com.caregiver.util.MealTimeRegressionUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
@@ -42,20 +43,10 @@ public class MealScheduleService {
     );
 
     public List<MealScheduleResponse> getMealSchedules(Long caregiverId) {
-        Map<String, MealSchedule> saved = new HashMap<>();
-        for (MealSchedule ms : mealScheduleRepository.findByCaregiverId(caregiverId)) {
-            saved.put(ms.getMealType(), ms);
-        }
-
         List<MealScheduleResponse> result = new ArrayList<>();
-        for (Map.Entry<String, LocalTime> entry : DEFAULTS.entrySet()) {
-            String mealType = entry.getKey();
-            if (saved.containsKey(mealType)) {
-                result.add(toResponse(saved.get(mealType)));
-            } else {
-                result.add(new MealScheduleResponse(null, caregiverId, mealType,
-                        entry.getValue().format(TIME_FMT)));
-            }
+        for (String mealType : DEFAULTS.keySet()) {
+            result.add(new MealScheduleResponse(caregiverId, mealType,
+                    predictMealTime(caregiverId, mealType)));
         }
         return result;
     }
@@ -64,37 +55,46 @@ public class MealScheduleService {
         String upperType = mealType.toUpperCase();
         LocalTime mealTime = LocalTime.parse(mealTimeStr, TIME_FMT);
 
-        // Persist to meal_schedule
-        MealSchedule entity = mealScheduleRepository
-                .findByCaregiverIdAndMealType(caregiverId, upperType)
-                .orElse(new MealSchedule(null, caregiverId, upperType, mealTime));
+        // Each update is stored as one daily meal-time record for later prediction.
+        MealSchedule entity = new MealSchedule();
+        entity.setCaregiverId(caregiverId);
+        entity.setMealType(upperType);
         entity.setMealTime(mealTime);
         MealSchedule saved = mealScheduleRepository.save(entity);
 
-        // Sync remaining caregiver_schedule entries for today..Sunday
-        LocalDate today = LocalDate.now(MYT);
-        LocalDate sunday = today.getDayOfWeek() == DayOfWeek.SUNDAY
-                ? today
-                : today.with(DayOfWeek.SUNDAY);
-
-        List<CaregiverSchedule> weekEntries = caregiverScheduleRepository
-                .findByCaregiverIdAndStartDatetimeBetweenAndIsDeleted(
-                        caregiverId,
-                        today.atStartOfDay(),
-                        sunday.atTime(23, 59, 59),
-                        0);
-
-        String noteKey = MEAL_NOTE_PREFIX + upperType;
-        for (CaregiverSchedule cs : weekEntries) {
-            if (!noteKey.equals(cs.getScheduleNote())) continue;
-            LocalDate entryDate = cs.getStartDatetime().toLocalDate();
-            LocalDateTime newStart = entryDate.atTime(mealTime);
-            cs.setStartDatetime(newStart);
-            cs.setEndDatetime(newStart.plusHours(1));
-            caregiverScheduleRepository.save(cs);
-        }
+        syncRemainingWeekMealEntries(caregiverId, List.of(toResponse(saved)));
 
         return toResponse(saved);
+    }
+
+    public List<MealScheduleResponse> refreshPredictedMealTimes(Long caregiverId) {
+        List<MealScheduleResponse> predictedMeals = getMealSchedules(caregiverId);
+        syncRemainingWeekMealEntries(caregiverId, predictedMeals);
+        return predictedMeals;
+    }
+
+    public String predictMealTime(Long caregiverId, String mealType) {
+        String upperType = mealType.toUpperCase();
+        List<MealSchedule> recentMeals = mealScheduleRepository
+                .findByCaregiverIdAndMealTypeOrderByIdAsc(caregiverId, upperType);
+
+        if (recentMeals.isEmpty()) {
+            return DEFAULTS.getOrDefault(upperType, LocalTime.of(8, 0)).format(TIME_FMT);
+        }
+
+        List<Integer> mealMinutes = new ArrayList<>();
+        for (MealSchedule meal : recentMeals) {
+            mealMinutes.add(MealTimeRegressionUtil.timeToMinute(meal.getMealTime().format(TIME_FMT)));
+        }
+
+        int predictedMinute;
+        if (mealMinutes.size() <= 2) {
+            predictedMinute = averageMealMinute(mealMinutes);
+        } else {
+            predictedMinute = MealTimeRegressionUtil.predictMealMinute(mealMinutes);
+        }
+
+        return MealTimeRegressionUtil.minuteToTime(predictedMinute);
     }
 
     public void generateWeeklyMeals(Long caregiverId) {
@@ -140,9 +140,52 @@ public class MealScheduleService {
 
     private MealScheduleResponse toResponse(MealSchedule ms) {
         return new MealScheduleResponse(
-                ms.getId(),
                 ms.getCaregiverId(),
                 ms.getMealType(),
                 ms.getMealTime().format(TIME_FMT));
+    }
+
+    private int averageMealMinute(List<Integer> mealMinutes) {
+        return (int) Math.round(mealMinutes.stream()
+                .mapToInt(Integer::intValue)
+                .average()
+                .orElse(0));
+    }
+
+    private void syncRemainingWeekMealEntries(Long caregiverId, List<MealScheduleResponse> meals) {
+        LocalDate today = LocalDate.now(MYT);
+        LocalDate sunday = today.getDayOfWeek() == DayOfWeek.SUNDAY
+                ? today
+                : today.with(DayOfWeek.SUNDAY);
+
+        List<CaregiverSchedule> weekEntries = caregiverScheduleRepository
+                .findByCaregiverIdAndStartDatetimeBetweenAndIsDeleted(
+                        caregiverId,
+                        today.atStartOfDay(),
+                        sunday.atTime(23, 59, 59),
+                        0);
+
+        Map<String, LocalTime> predictedTimes = new HashMap<>();
+        for (MealScheduleResponse meal : meals) {
+            predictedTimes.put(meal.getMealType(), LocalTime.parse(meal.getMealTime(), TIME_FMT));
+        }
+
+        for (CaregiverSchedule cs : weekEntries) {
+            if (cs.getScheduleNote() == null || !cs.getScheduleNote().startsWith(MEAL_NOTE_PREFIX)) {
+                continue;
+            }
+
+            String mealType = cs.getScheduleNote().substring(MEAL_NOTE_PREFIX.length());
+            LocalTime mealTime = predictedTimes.get(mealType);
+            if (mealTime == null) {
+                continue;
+            }
+
+            LocalDate entryDate = cs.getStartDatetime().toLocalDate();
+            LocalDateTime newStart = entryDate.atTime(mealTime);
+            cs.setStartDatetime(newStart);
+            cs.setEndDatetime(newStart.plusHours(1));
+            caregiverScheduleRepository.save(cs);
+        }
     }
 }

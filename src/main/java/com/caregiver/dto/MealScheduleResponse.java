@@ -8,7 +8,6 @@ import lombok.NoArgsConstructor;
 @NoArgsConstructor
 @AllArgsConstructor
 public class MealScheduleResponse {
-    private Long id;
     private Long caregiverId;
     private String mealType;
     private String mealTime; // "HH:mm"
