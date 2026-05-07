@@ -8,8 +8,7 @@ import lombok.NoArgsConstructor;
 import java.time.LocalTime;
 
 @Entity
-@Table(name = "meal_schedule",
-        uniqueConstraints = @UniqueConstraint(columnNames = {"caregiver_id", "meal_type"}))
+@Table(name = "meal_schedule")
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
