@@ -34,6 +34,7 @@ public class MealSchedule {
     /**
      * When this row was logged (MYT wall clock from the app). Same MYT calendar day + caregiver +
      * meal_type is treated as one logical row (upsert updates this row).
+     * The recorded_at timestamp.
      */
     @Column(name = "recorded_at")
     private LocalDateTime recordedAt;

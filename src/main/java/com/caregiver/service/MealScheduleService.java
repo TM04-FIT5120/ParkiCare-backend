@@ -66,13 +66,27 @@ public class MealScheduleService {
         return result;
     }
 
+
+/**
+ * update the meal time for a caregiver caregiver.
+ * @param caregiverId The ID of the caregiver caregiver.
+ * @param mealType The meal type to update.
+ * @param mealTimeStr The meal time string in HH:mm format.
+ * @return The updated meal schedule response.
+ * @throws IllegalArgumentException If mealTime is null or blank.
+ */
     public MealScheduleResponse updateMealTime(Long caregiverId, String mealType, String mealTimeStr) {
+    // 将用餐类型转换为大写
         String upperType = mealType.toUpperCase();
+    // 检查用餐时间字符串是否为空
         if (mealTimeStr == null || mealTimeStr.isBlank()) {
             throw new IllegalArgumentException("mealTime is required");
         }
+    // 解析用餐时间字符串为LocalTime对象
         LocalTime mealTime = LocalTime.parse(mealTimeStr.trim(), TIME_FMT);
+    // 获取马来西亚时区的当前日期
         LocalDate dayMyt = LocalDate.now(MYT);
+    // 获取马来西亚时区的当前日期时间
         LocalDateTime nowMyt = LocalDateTime.now(MYT);
 
         // At most one row per (caregiver, meal type, MYT calendar day): same-day edits overwrite.

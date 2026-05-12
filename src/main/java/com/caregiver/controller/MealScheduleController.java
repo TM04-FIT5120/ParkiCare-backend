@@ -15,7 +15,11 @@ import java.util.Map;
 public class MealScheduleController {
 
     private final MealScheduleService mealScheduleService;
-
+    /**
+     * Get all meal schedules for a caregiver caregiver.
+     * @param caregiverId The ID of the caregiver.
+     * @return A list of meal schedule responses.
+     */
     @GetMapping("/caregiver/{caregiverId}")
     public List<MealScheduleResponse> getMealSchedules(@PathVariable Long caregiverId) {
         return mealScheduleService.getMealSchedules(caregiverId);
