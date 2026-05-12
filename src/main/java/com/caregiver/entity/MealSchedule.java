@@ -5,6 +5,7 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.time.LocalDateTime;
 import java.time.LocalTime;
 
 @Entity
@@ -26,4 +27,8 @@ public class MealSchedule {
 
     @Column(name = "meal_time", nullable = false)
     private LocalTime mealTime;
+
+    /** When this row was logged; used as the x-axis for day-based trend regression. */
+    @Column(name = "recorded_at")
+    private LocalDateTime recordedAt;
 }

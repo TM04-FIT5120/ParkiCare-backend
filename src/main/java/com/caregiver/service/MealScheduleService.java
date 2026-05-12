@@ -15,6 +15,7 @@ import java.time.LocalDateTime;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.time.temporal.ChronoUnit;
 import java.util.*;
 
 @Service
@@ -27,6 +28,20 @@ public class MealScheduleService {
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
     private static final ZoneId MYT = ZoneId.of("Asia/Kuala_Lumpur");
     private static final String MEAL_NOTE_PREFIX = "meal:";
+
+    /** Use only the latest N logged times for prediction. */
+    private static final int PREDICTION_HISTORY_WINDOW = 14;
+
+    /** Cap forward extrapolation (days beyond last sample) when using day-axis regression. */
+    private static final int MAX_REGRESSION_FORWARD_DAYS = 7;
+
+    /** If quadratic prediction differs from linear by more than this, use linear (minutes). */
+    private static final int MAX_QUAD_VS_LINEAR_DIFF_MINUTES = 90;
+
+    /**
+     * If |c2| in y≈c0+c1*x+c2*x^2 exceeds this (minutes per day²), quadratic extrapolation is too sharp.
+     */
+    private static final double MAX_QUAD_CURVATURE = 2.0;
 
     private static final Map<String, LocalTime> DEFAULTS = new LinkedHashMap<>();
 
@@ -60,6 +75,7 @@ public class MealScheduleService {
         entity.setCaregiverId(caregiverId);
         entity.setMealType(upperType);
         entity.setMealTime(mealTime);
+        entity.setRecordedAt(LocalDateTime.now(MYT));
         MealSchedule saved = mealScheduleRepository.save(entity);
 
         syncRemainingWeekMealEntries(caregiverId, List.of(toResponse(saved)));
@@ -75,23 +91,81 @@ public class MealScheduleService {
 
     public String predictMealTime(Long caregiverId, String mealType) {
         String upperType = mealType.toUpperCase();
-        List<MealSchedule> recentMeals = mealScheduleRepository
+        List<MealSchedule> rows = mealScheduleRepository
                 .findByCaregiverIdAndMealTypeOrderByIdAsc(caregiverId, upperType);
 
-        if (recentMeals.isEmpty()) {
+        if (rows.isEmpty()) {
             return DEFAULTS.getOrDefault(upperType, LocalTime.of(8, 0)).format(TIME_FMT);
         }
 
-        List<Integer> mealMinutes = new ArrayList<>();
-        for (MealSchedule meal : recentMeals) {
-            mealMinutes.add(MealTimeRegressionUtil.timeToMinute(meal.getMealTime().format(TIME_FMT)));
+        rows.sort(Comparator
+                .comparing(MealSchedule::getRecordedAt, Comparator.nullsLast(Comparator.naturalOrder()))
+                .thenComparing(MealSchedule::getId));
+
+        int n = rows.size();
+        int from = Math.max(0, n - PREDICTION_HISTORY_WINDOW);
+        List<MealSchedule> window = rows.subList(from, n);
+
+        List<Integer> windowMinutes = new ArrayList<>(window.size());
+        for (MealSchedule meal : window) {
+            windowMinutes.add(MealTimeRegressionUtil.timeToMinute(meal.getMealTime().format(TIME_FMT)));
         }
 
         int predictedMinute;
-        if (mealMinutes.size() <= 2) {
-            predictedMinute = averageMealMinute(mealMinutes);
+        if (windowMinutes.size() <= 2) {
+            predictedMinute = averageMealMinute(windowMinutes);
         } else {
-            predictedMinute = MealTimeRegressionUtil.predictMealMinute(mealMinutes);
+            boolean allHaveRecordedAt = window.stream().allMatch(m -> m.getRecordedAt() != null);
+            if (allHaveRecordedAt) {
+                LocalDate anchor = window.get(0).getRecordedAt().toLocalDate();
+                List<Double> xDays = new ArrayList<>(window.size());
+                for (MealSchedule m : window) {
+                    xDays.add((double) ChronoUnit.DAYS.between(anchor, m.getRecordedAt().toLocalDate()));
+                }
+                double xToday = Math.max(0.0, ChronoUnit.DAYS.between(anchor, LocalDate.now(MYT)));
+                double lastX = xDays.get(xDays.size() - 1);
+                double xPredict = xToday;
+                if (xPredict > lastX + MAX_REGRESSION_FORWARD_DAYS) {
+                    xPredict = lastX + MAX_REGRESSION_FORWARD_DAYS;
+                }
+                OptionalInt linear = MealTimeRegressionUtil.predictLinearMinute(xDays, windowMinutes, xPredict);
+                if (windowMinutes.size() >= 4) {
+                    Optional<MealTimeRegressionUtil.QuadraticFit> quad =
+                            MealTimeRegressionUtil.fitQuadraticLeastSquares(xDays, windowMinutes);
+                    if (quad.isPresent()) {
+                        double qRaw = quad.get().predict(xPredict);
+                        if (Double.isFinite(qRaw)) {
+                            int qPred = (int) Math.round(qRaw);
+                            boolean quadOk = Math.abs(quad.get().getC2()) <= MAX_QUAD_CURVATURE;
+                            if (linear.isPresent()) {
+                                quadOk = quadOk
+                                        && Math.abs(qPred - linear.getAsInt()) <= MAX_QUAD_VS_LINEAR_DIFF_MINUTES;
+                            }
+                            if (quadOk) {
+                                predictedMinute = qPred;
+                            } else if (linear.isPresent()) {
+                                predictedMinute = linear.getAsInt();
+                            } else {
+                                predictedMinute = MealTimeRegressionUtil.medianMinute(new ArrayList<>(windowMinutes));
+                            }
+                        } else if (linear.isPresent()) {
+                            predictedMinute = linear.getAsInt();
+                        } else {
+                            predictedMinute = MealTimeRegressionUtil.medianMinute(new ArrayList<>(windowMinutes));
+                        }
+                    } else if (linear.isPresent()) {
+                        predictedMinute = linear.getAsInt();
+                    } else {
+                        predictedMinute = MealTimeRegressionUtil.medianMinute(new ArrayList<>(windowMinutes));
+                    }
+                } else if (linear.isPresent()) {
+                    predictedMinute = linear.getAsInt();
+                } else {
+                    predictedMinute = MealTimeRegressionUtil.medianMinute(new ArrayList<>(windowMinutes));
+                }
+            } else {
+                predictedMinute = MealTimeRegressionUtil.medianMinute(new ArrayList<>(windowMinutes));
+            }
         }
 
         return MealTimeRegressionUtil.minuteToTime(predictedMinute);
