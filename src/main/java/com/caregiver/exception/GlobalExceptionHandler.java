@@ -13,24 +13,28 @@ public class GlobalExceptionHandler {
 
     @ExceptionHandler(RuntimeException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Map<String, String> handleRuntimeException(RuntimeException ex) {
-        Map<String, String> result = new HashMap<>();
+    public Map<String, Object> handleRuntimeException(RuntimeException ex) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", false);
         result.put("error", ex.getMessage());
         return result;
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Map<String, String> handleValidationException(MethodArgumentNotValidException ex) {
-        Map<String, String> result = new HashMap<>();
-        result.put("error", ex.getBindingResult().getFieldError().getDefaultMessage());
+    public Map<String, Object> handleValidationException(MethodArgumentNotValidException ex) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", false);
+        var fe = ex.getBindingResult().getFieldError();
+        result.put("error", fe != null ? fe.getDefaultMessage() : "Validation failed");
         return result;
     }
 
     @ExceptionHandler(ConstraintViolationException.class)
     @ResponseStatus(HttpStatus.BAD_REQUEST)
-    public Map<String, String> handleConstraintViolationException(ConstraintViolationException ex) {
-        Map<String, String> result = new HashMap<>();
+    public Map<String, Object> handleConstraintViolationException(ConstraintViolationException ex) {
+        Map<String, Object> result = new HashMap<>();
+        result.put("success", false);
         result.put("error", ex.getMessage());
         return result;
     }
