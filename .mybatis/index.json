@@ -1,0 +1,22 @@
+{
+  "version": "1.0",
+  "timestamp": 1778606100563,
+  "projectRoot": "d:\\FIT5120\\ParkiCare-backend",
+  "entries": [
+    {
+      "path": "target\\classes\\com\\caregiver\\config\\CorsConfig.class",
+      "mtime": 1778568239178.0664,
+      "size": 752
+    },
+    {
+      "path": "target\\classes\\com\\caregiver\\config\\FirebaseConfig.class",
+      "mtime": 1778573543358.23,
+      "size": 3821
+    },
+    {
+      "path": "target\\classes\\com\\caregiver\\CaregiverTaskSystemApplication.class",
+      "mtime": 1778606100440.7275,
+      "size": 1127
+    }
+  ]
+}
