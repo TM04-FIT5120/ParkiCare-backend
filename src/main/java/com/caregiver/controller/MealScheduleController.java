@@ -30,8 +30,13 @@ public class MealScheduleController {
     public MealScheduleResponse updateMealTime(
             @PathVariable Long caregiverId,
             @PathVariable String mealType,
-            @RequestBody Map<String, String> body) {
-        return mealScheduleService.updateMealTime(caregiverId, mealType, body.get("mealTime"));
+            @RequestBody Map<String, Object> body) {
+        Object raw = body.get("mealTime");
+        if (raw == null) {
+            throw new IllegalArgumentException("mealTime is required");
+        }
+        String mealTimeStr = raw.toString().trim();
+        return mealScheduleService.updateMealTime(caregiverId, mealType, mealTimeStr);
     }
 
     @PostMapping("/caregiver/{caregiverId}/generate-week")

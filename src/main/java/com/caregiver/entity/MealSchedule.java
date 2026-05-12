@@ -4,6 +4,8 @@ import jakarta.persistence.*;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
+import org.hibernate.annotations.JdbcTypeCode;
+import org.hibernate.type.SqlTypes;
 
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -25,10 +27,14 @@ public class MealSchedule {
     @Column(name = "meal_type", nullable = false, length = 20)
     private String mealType; // BREAKFAST | LUNCH | DINNER
 
+    @JdbcTypeCode(SqlTypes.TIME)
     @Column(name = "meal_time", nullable = false)
     private LocalTime mealTime;
 
-    /** When this row was logged; used as the x-axis for day-based trend regression. */
+    /**
+     * When this row was logged (MYT wall clock from the app). Same MYT calendar day + caregiver +
+     * meal_type is treated as one logical row (upsert updates this row).
+     */
     @Column(name = "recorded_at")
     private LocalDateTime recordedAt;
 }
