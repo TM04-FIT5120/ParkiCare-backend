@@ -1,5 +1,6 @@
 package com.caregiver.dto;
 
+import com.caregiver.annotation.Translatable;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -20,6 +21,8 @@ public class MedicationPlanResponse {
     private String time;
 
     private String status;
+
+    @Translatable
     private String note;
 
     private String mealTiming;

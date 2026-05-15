@@ -1,5 +1,6 @@
 package com.caregiver.dto;
 
+import com.caregiver.annotation.Translatable;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import lombok.Data;
@@ -19,6 +20,7 @@ public class CaregiverScheduleRequest {
     @NotBlank(message = "End datetime cannot be empty")
     private String endDatetime;
 
+    @Translatable
     private String scheduleNote;
 
     private String recurrence;

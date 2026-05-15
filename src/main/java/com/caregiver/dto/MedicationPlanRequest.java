@@ -1,5 +1,6 @@
 package com.caregiver.dto;
 
+import com.caregiver.annotation.Translatable;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.NotEmpty;
 import lombok.Data;
@@ -32,6 +33,7 @@ public class MedicationPlanRequest {
     @NotNull(message = "Start date cannot be null")
     private String startDate;
 
+    @Translatable
     private String planNote;
 
     private String mealTiming;
