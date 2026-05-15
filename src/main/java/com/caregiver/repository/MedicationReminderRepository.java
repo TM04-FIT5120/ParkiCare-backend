@@ -83,4 +83,13 @@ public interface MedicationReminderRepository extends JpaRepository<MedicationPl
             @Param("remindTime") LocalTime remindTime
     );
 
+    /**
+     * Find confirmed medication plans whose 20-minute observation window has elapsed
+     * and have not yet had an observation notification sent.
+     */
+    @Query("SELECT m FROM MedicationPlan m WHERE m.observationNotified = 0 " +
+           "AND m.observationDueTime IS NOT NULL AND m.observationDueTime <= :now " +
+           "AND m.remindStatus = 2 AND m.isValid = 1")
+    List<MedicationPlan> findDueObservations(@Param("now") LocalDateTime now);
+
 }
