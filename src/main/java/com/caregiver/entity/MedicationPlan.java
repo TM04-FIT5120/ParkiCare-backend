@@ -74,4 +74,10 @@ public class MedicationPlan {
 
     @Column(name = "recurrence", length = 20)
     private String recurrence;
+
+    @Column(name = "observation_due_time")
+    private LocalDateTime observationDueTime;
+
+    @Column(name = "observation_notified", nullable = false)
+    private Integer observationNotified = 0;
 }

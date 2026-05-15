@@ -98,6 +98,33 @@ public class MedicationReminderScheduler {
             plan.setSnoozeTime(null);
             medicationReminderRepository.save(plan);
         }
+
+        // --- 3. Post-medication observation notifications (20 min after confirmation) ---
+        List<MedicationPlan> dueObservations = medicationReminderRepository
+                .findDueObservations(LocalDateTime.now());
+
+        if (!dueObservations.isEmpty()) {
+            log.info("[Scheduler] Found {} observation notification(s) due", dueObservations.size());
+        }
+
+        for (MedicationPlan plan : dueObservations) {
+            Long caregiverId = getCaregiverId(plan.getPatientId());
+            if (caregiverId == null) {
+                log.warn("[Scheduler] No caregiver found for patientId={}, skipping observation for remindId={}", plan.getPatientId(), plan.getRemindId());
+                continue;
+            }
+
+            log.info("[Scheduler] Sending observation notification for remindId={} to caregiverId={}", plan.getRemindId(), caregiverId);
+            String body = buildNotificationBody(plan);
+            pushNotificationService.sendToCaregiver(
+                    caregiverId, plan.getRemindId(),
+                    "Observation Reminder", body,
+                    "OBSERVATION_REMINDER"
+            );
+
+            plan.setObservationNotified(1);
+            medicationReminderRepository.save(plan);
+        }
     }
 
     private Long getCaregiverId(Long patientId) {

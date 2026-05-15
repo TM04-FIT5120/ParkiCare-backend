@@ -73,22 +73,30 @@ public class PushNotificationService {
 
     /**
      * Send a push notification to all active devices registered for a caregiver.
-     * remindId and caregiverId are included in the FCM data payload so the service
-     * worker can invoke the confirm/snooze APIs directly from notification action buttons.
-     * Tokens that are no longer registered with FCM are automatically deactivated.
+     * Delegates to the typed overload with type="MEDICATION_REMINDER".
      */
     public void sendToCaregiver(Long caregiverId, Long remindId, String title, String body) {
+        sendToCaregiver(caregiverId, remindId, title, body, "MEDICATION_REMINDER");
+    }
+
+    /**
+     * Send a push notification to all active devices registered for a caregiver.
+     * The {@code type} field is included in the FCM data payload so the frontend
+     * can distinguish medication reminders from observation reminders.
+     * Tokens that are no longer registered with FCM are automatically deactivated.
+     */
+    public void sendToCaregiver(Long caregiverId, Long remindId, String title, String body, String type) {
         List<PushSubscription> tokens = pushSubscriptionRepository
                 .findByCaregiverIdAndIsActive(caregiverId, true);
 
-        log.info("[FCM] Sending to caregiverId={} remindId={} - {} active token(s)", caregiverId, remindId, tokens.size());
+        log.info("[FCM] Sending to caregiverId={} remindId={} type={} - {} active token(s)", caregiverId, remindId, type, tokens.size());
 
         for (PushSubscription sub : tokens) {
             // Use setNotification() for the visible title/body so FCM does NOT
             // silently convert putData("title"/"body") into a notification envelope
             // and discard the other data fields (a known FCM Web Push behaviour when
             // data keys collide with reserved notification field names).
-            // remindId and caregiverId are in putData() so the service worker and
+            // remindId, caregiverId and type are in putData() so the service worker and
             // the React onMessage handler can always read them.
             // title/body are duplicated in putData() so the raw SW push handler
             // (which reads raw.data) can also access them.
@@ -102,6 +110,7 @@ public class PushNotificationService {
                     .putData("caregiverId", String.valueOf(caregiverId))
                     .putData("title", title)
                     .putData("body", body)
+                    .putData("type", type)
                     .build();
             try {
                 String messageId = firebaseMessaging.send(message);
