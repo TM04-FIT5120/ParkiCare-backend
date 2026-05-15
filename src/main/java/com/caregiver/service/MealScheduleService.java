@@ -172,7 +172,7 @@ public class MealScheduleService {
                     predictedMinute = regressMinuteFromXDays(xFrac, windowMinutes, xPredFrac);
                 }
             } else {
-                predictedMinute = MealTimeRegressionUtil.medianMinute(new ArrayList<>(windowMinutes));
+                predictedMinute = modeMealMinute(new ArrayList<>(windowMinutes));
             }
         }
 
@@ -244,7 +244,31 @@ public class MealScheduleService {
                 .orElse(0));
     }
 
-    /** Linear / quadratic regression on x vs meal minutes, with median fallbacks. */
+    /**
+     * 众数（分钟数）：出现次数最多的用餐时刻；若并列多只取这些众数的算术平均（四舍五入）；
+     * 若每个样本分钟都不同（无众数），退化为与 {@link #averageMealMinute} 相同的均值。
+     */
+    private int modeMealMinute(List<Integer> mealMinutes) {
+        if (mealMinutes == null || mealMinutes.isEmpty()) {
+            throw new IllegalArgumentException("Meal minutes cannot be empty");
+        }
+        Map<Integer, Integer> freq = new HashMap<>();
+        for (int m : mealMinutes) {
+            freq.merge(m, 1, Integer::sum);
+        }
+        int maxCount = freq.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+        List<Integer> modes = freq.entrySet().stream()
+                .filter(e -> e.getValue() == maxCount)
+                .map(Map.Entry::getKey)
+                .sorted()
+                .toList();
+        if (maxCount == 1 && modes.size() == mealMinutes.size()) {
+            return averageMealMinute(mealMinutes);
+        }
+        return (int) Math.round(modes.stream().mapToInt(Integer::intValue).average().orElse(modes.get(0)));
+    }
+
+    /** Linear / quadratic regression on x vs meal minutes, with mode fallbacks when regression is unusable. */
     private int regressMinuteFromXDays(List<Double> xDays, List<Integer> windowMinutes, double xPredict) {
         OptionalInt linear = MealTimeRegressionUtil.predictLinearMinute(xDays, windowMinutes, xPredict);
         if (windowMinutes.size() >= 4) {
@@ -265,22 +289,22 @@ public class MealScheduleService {
                     if (linear.isPresent()) {
                         return linear.getAsInt();
                     }
-                    return MealTimeRegressionUtil.medianMinute(new ArrayList<>(windowMinutes));
+                    return modeMealMinute(new ArrayList<>(windowMinutes));
                 }
                 if (linear.isPresent()) {
                     return linear.getAsInt();
                 }
-                return MealTimeRegressionUtil.medianMinute(new ArrayList<>(windowMinutes));
+                return modeMealMinute(new ArrayList<>(windowMinutes));
             }
             if (linear.isPresent()) {
                 return linear.getAsInt();
             }
-            return MealTimeRegressionUtil.medianMinute(new ArrayList<>(windowMinutes));
+            return modeMealMinute(new ArrayList<>(windowMinutes));
         }
         if (linear.isPresent()) {
             return linear.getAsInt();
         }
-        return MealTimeRegressionUtil.medianMinute(new ArrayList<>(windowMinutes));
+        return modeMealMinute(new ArrayList<>(windowMinutes));
     }
 
     private void syncRemainingWeekMealEntries(Long caregiverId, List<MealScheduleResponse> meals) {
