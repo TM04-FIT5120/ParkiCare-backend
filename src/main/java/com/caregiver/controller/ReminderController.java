@@ -68,6 +68,12 @@ public class ReminderController {
         return medicationPlanService.getPlansByPatient(patientId);
     }
 
+    /** 当天覆盖日历的全部用药计划（is_valid 0/1；与事件推荐 medicationTimeList 同源）。 */
+    @GetMapping("/patient/{patientId}/today-all")
+    public List<MedicationPlan> getTodayAllMedicationPlans(@PathVariable Long patientId) {
+        return medicationPlanService.getTodayAllPlansByPatient(patientId, LocalDate.now());
+    }
+
     @PatchMapping("/confirm/{remindId}")
     public MedicationPlan confirmReminder(@PathVariable Long remindId,
                                           @RequestParam Long caregiverId) {

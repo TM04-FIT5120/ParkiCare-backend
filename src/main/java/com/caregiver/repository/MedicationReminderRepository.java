@@ -84,12 +84,13 @@ public interface MedicationReminderRepository extends JpaRepository<MedicationPl
     );
 
     /**
-     * Find confirmed medication plans whose 20-minute observation window has elapsed
-     * and have not yet had an observation notification sent.
+     * 当日「全天」用药计划行（不区分 is_valid 0/1）：用于 on/off、事件推荐 medicationTimeList。
+     * 含已完成与未完成排程；条件：startDate≤today，endDate 为空或≥today。
      */
-    @Query("SELECT m FROM MedicationPlan m WHERE m.observationNotified = 0 " +
-           "AND m.observationDueTime IS NOT NULL AND m.observationDueTime <= :now " +
-           "AND m.remindStatus = 2 AND m.isValid = 1")
-    List<MedicationPlan> findDueObservations(@Param("now") LocalDateTime now);
+    @Query("SELECT m FROM MedicationPlan m WHERE m.patientId = :patientId "
+            + "AND m.startDate <= :today AND (m.endDate IS NULL OR m.endDate >= :today)")
+    List<MedicationPlan> findAllPlansForPatientOnCalendarDay(
+            @Param("patientId") Long patientId,
+            @Param("today") LocalDate today);
 
 }

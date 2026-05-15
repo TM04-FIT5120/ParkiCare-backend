@@ -66,16 +66,39 @@ public class MealScheduleService {
         return result;
     }
 
-    public MealScheduleResponse updateMealTime(Long caregiverId, String mealType, String mealTimeStr) {
-        String upperType = mealType.toUpperCase();
-        LocalTime mealTime = LocalTime.parse(mealTimeStr, TIME_FMT);
 
-        // Each update is stored as one daily meal-time record for later prediction.
-        MealSchedule entity = new MealSchedule();
-        entity.setCaregiverId(caregiverId);
-        entity.setMealType(upperType);
+/**
+ * update the meal time for a caregiver caregiver.
+ * @param caregiverId The ID of the caregiver caregiver.
+ * @param mealType The meal type to update.
+ * @param mealTimeStr The meal time string in HH:mm format.
+ * @return The updated meal schedule response.
+ * @throws IllegalArgumentException If mealTime is null or blank.
+ */
+    public MealScheduleResponse updateMealTime(Long caregiverId, String mealType, String mealTimeStr) {
+    // 将用餐类型转换为大写
+        String upperType = mealType.toUpperCase();
+    // 检查用餐时间字符串是否为空
+        if (mealTimeStr == null || mealTimeStr.isBlank()) {
+            throw new IllegalArgumentException("mealTime is required");
+        }
+    // 解析用餐时间字符串为LocalTime对象
+        LocalTime mealTime = LocalTime.parse(mealTimeStr.trim(), TIME_FMT);
+    // 获取马来西亚时区的当前日期
+        LocalDate dayMyt = LocalDate.now(MYT);
+    // 获取马来西亚时区的当前日期时间
+        LocalDateTime nowMyt = LocalDateTime.now(MYT);
+
+        // At most one row per (caregiver, meal type, MYT calendar day): same-day edits overwrite.
+        // Resolve in Java (not native DATE bind) to avoid JDBC/LocalDate mismatch with MySQL DATE().
+        MealSchedule entity = findLatestForMytDay(caregiverId, upperType, dayMyt).orElseGet(() -> {
+            MealSchedule m = new MealSchedule();
+            m.setCaregiverId(caregiverId);
+            m.setMealType(upperType);
+            return m;
+        });
         entity.setMealTime(mealTime);
-        entity.setRecordedAt(LocalDateTime.now(MYT));
+        entity.setRecordedAt(nowMyt);
         MealSchedule saved = mealScheduleRepository.save(entity);
 
         syncRemainingWeekMealEntries(caregiverId, List.of(toResponse(saved)));
@@ -117,54 +140,39 @@ public class MealScheduleService {
         } else {
             boolean allHaveRecordedAt = window.stream().allMatch(m -> m.getRecordedAt() != null);
             if (allHaveRecordedAt) {
-                LocalDate anchor = window.get(0).getRecordedAt().toLocalDate();
+                // x = whole days between first sample's calendar day and each recorded_at (MYT dates stored as wall clock).
+                LocalDate anchorDay = window.get(0).getRecordedAt().toLocalDate();
                 List<Double> xDays = new ArrayList<>(window.size());
                 for (MealSchedule m : window) {
-                    xDays.add((double) ChronoUnit.DAYS.between(anchor, m.getRecordedAt().toLocalDate()));
+                    xDays.add((double) ChronoUnit.DAYS.between(anchorDay, m.getRecordedAt().toLocalDate()));
                 }
-                double xToday = Math.max(0.0, ChronoUnit.DAYS.between(anchor, LocalDate.now(MYT)));
+                LocalDate todayMyt = LocalDate.now(MYT);
+                double xToday = Math.max(0.0, ChronoUnit.DAYS.between(anchorDay, todayMyt));
                 double lastX = xDays.get(xDays.size() - 1);
                 double xPredict = xToday;
                 if (xPredict > lastX + MAX_REGRESSION_FORWARD_DAYS) {
                     xPredict = lastX + MAX_REGRESSION_FORWARD_DAYS;
                 }
-                OptionalInt linear = MealTimeRegressionUtil.predictLinearMinute(xDays, windowMinutes, xPredict);
-                if (windowMinutes.size() >= 4) {
-                    Optional<MealTimeRegressionUtil.QuadraticFit> quad =
-                            MealTimeRegressionUtil.fitQuadraticLeastSquares(xDays, windowMinutes);
-                    if (quad.isPresent()) {
-                        double qRaw = quad.get().predict(xPredict);
-                        if (Double.isFinite(qRaw)) {
-                            int qPred = (int) Math.round(qRaw);
-                            boolean quadOk = Math.abs(quad.get().getC2()) <= MAX_QUAD_CURVATURE;
-                            if (linear.isPresent()) {
-                                quadOk = quadOk
-                                        && Math.abs(qPred - linear.getAsInt()) <= MAX_QUAD_VS_LINEAR_DIFF_MINUTES;
-                            }
-                            if (quadOk) {
-                                predictedMinute = qPred;
-                            } else if (linear.isPresent()) {
-                                predictedMinute = linear.getAsInt();
-                            } else {
-                                predictedMinute = MealTimeRegressionUtil.medianMinute(new ArrayList<>(windowMinutes));
-                            }
-                        } else if (linear.isPresent()) {
-                            predictedMinute = linear.getAsInt();
-                        } else {
-                            predictedMinute = MealTimeRegressionUtil.medianMinute(new ArrayList<>(windowMinutes));
-                        }
-                    } else if (linear.isPresent()) {
-                        predictedMinute = linear.getAsInt();
-                    } else {
-                        predictedMinute = MealTimeRegressionUtil.medianMinute(new ArrayList<>(windowMinutes));
-                    }
-                } else if (linear.isPresent()) {
-                    predictedMinute = linear.getAsInt();
+                if (lastX > 0 || xDays.stream().anyMatch(x -> x > 0)) {
+                    predictedMinute = regressMinuteFromXDays(xDays, windowMinutes, xPredict);
                 } else {
-                    predictedMinute = MealTimeRegressionUtil.medianMinute(new ArrayList<>(windowMinutes));
+                    // All samples same calendar day: spread x by time-of-day within that day
+                    LocalDateTime anchorDt = window.get(0).getRecordedAt();
+                    List<Double> xFrac = new ArrayList<>(window.size());
+                    for (MealSchedule m : window) {
+                        long minutesFromAnchor = ChronoUnit.MINUTES.between(anchorDt, m.getRecordedAt());
+                        xFrac.add(minutesFromAnchor / 1440.0);
+                    }
+                    double xTodayFrac = Math.max(0.0, ChronoUnit.MINUTES.between(anchorDt, LocalDateTime.now(MYT)) / 1440.0);
+                    double lastXf = xFrac.get(xFrac.size() - 1);
+                    double xPredFrac = xTodayFrac;
+                    if (xPredFrac > lastXf + MAX_REGRESSION_FORWARD_DAYS) {
+                        xPredFrac = lastXf + MAX_REGRESSION_FORWARD_DAYS;
+                    }
+                    predictedMinute = regressMinuteFromXDays(xFrac, windowMinutes, xPredFrac);
                 }
             } else {
-                predictedMinute = MealTimeRegressionUtil.medianMinute(new ArrayList<>(windowMinutes));
+                predictedMinute = modeMealMinute(new ArrayList<>(windowMinutes));
             }
         }
 
@@ -212,6 +220,16 @@ public class MealScheduleService {
         }
     }
 
+    /**
+     * Latest row for this caregiver + meal type whose {@code recorded_at} falls on {@code dayMyt}
+     * (wall-clock date of the stored {@link LocalDateTime}, aligned with {@link #MYT} “today” logic).
+     */
+    private Optional<MealSchedule> findLatestForMytDay(Long caregiverId, String mealType, LocalDate dayMyt) {
+        return mealScheduleRepository.findByCaregiverIdAndMealTypeOrderByIdAsc(caregiverId, mealType).stream()
+                .filter(m -> m.getRecordedAt() != null && dayMyt.equals(m.getRecordedAt().toLocalDate()))
+                .max(Comparator.comparing(MealSchedule::getId));
+    }
+
     private MealScheduleResponse toResponse(MealSchedule ms) {
         return new MealScheduleResponse(
                 ms.getCaregiverId(),
@@ -224,6 +242,69 @@ public class MealScheduleService {
                 .mapToInt(Integer::intValue)
                 .average()
                 .orElse(0));
+    }
+
+    /**
+     * 众数（分钟数）：出现次数最多的用餐时刻；若并列多只取这些众数的算术平均（四舍五入）；
+     * 若每个样本分钟都不同（无众数），退化为与 {@link #averageMealMinute} 相同的均值。
+     */
+    private int modeMealMinute(List<Integer> mealMinutes) {
+        if (mealMinutes == null || mealMinutes.isEmpty()) {
+            throw new IllegalArgumentException("Meal minutes cannot be empty");
+        }
+        Map<Integer, Integer> freq = new HashMap<>();
+        for (int m : mealMinutes) {
+            freq.merge(m, 1, Integer::sum);
+        }
+        int maxCount = freq.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+        List<Integer> modes = freq.entrySet().stream()
+                .filter(e -> e.getValue() == maxCount)
+                .map(Map.Entry::getKey)
+                .sorted()
+                .toList();
+        if (maxCount == 1 && modes.size() == mealMinutes.size()) {
+            return averageMealMinute(mealMinutes);
+        }
+        return (int) Math.round(modes.stream().mapToInt(Integer::intValue).average().orElse(modes.get(0)));
+    }
+
+    /** Linear / quadratic regression on x vs meal minutes, with mode fallbacks when regression is unusable. */
+    private int regressMinuteFromXDays(List<Double> xDays, List<Integer> windowMinutes, double xPredict) {
+        OptionalInt linear = MealTimeRegressionUtil.predictLinearMinute(xDays, windowMinutes, xPredict);
+        if (windowMinutes.size() >= 4) {
+            Optional<MealTimeRegressionUtil.QuadraticFit> quad =
+                    MealTimeRegressionUtil.fitQuadraticLeastSquares(xDays, windowMinutes);
+            if (quad.isPresent()) {
+                double qRaw = quad.get().predict(xPredict);
+                if (Double.isFinite(qRaw)) {
+                    int qPred = (int) Math.round(qRaw);
+                    boolean quadOk = Math.abs(quad.get().getC2()) <= MAX_QUAD_CURVATURE;
+                    if (linear.isPresent()) {
+                        quadOk = quadOk
+                                && Math.abs(qPred - linear.getAsInt()) <= MAX_QUAD_VS_LINEAR_DIFF_MINUTES;
+                    }
+                    if (quadOk) {
+                        return qPred;
+                    }
+                    if (linear.isPresent()) {
+                        return linear.getAsInt();
+                    }
+                    return modeMealMinute(new ArrayList<>(windowMinutes));
+                }
+                if (linear.isPresent()) {
+                    return linear.getAsInt();
+                }
+                return modeMealMinute(new ArrayList<>(windowMinutes));
+            }
+            if (linear.isPresent()) {
+                return linear.getAsInt();
+            }
+            return modeMealMinute(new ArrayList<>(windowMinutes));
+        }
+        if (linear.isPresent()) {
+            return linear.getAsInt();
+        }
+        return modeMealMinute(new ArrayList<>(windowMinutes));
     }
 
     private void syncRemainingWeekMealEntries(Long caregiverId, List<MealScheduleResponse> meals) {

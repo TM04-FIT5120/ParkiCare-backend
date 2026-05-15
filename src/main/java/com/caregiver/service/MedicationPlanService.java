@@ -8,7 +8,6 @@ import com.caregiver.dto.AutoMedicationPlanRequest;
 import com.caregiver.entity.DrugBase;
 import com.caregiver.repository.DrugBaseRepository;
 import java.time.LocalDateTime;
-import java.time.format.DateTimeFormatter;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -90,6 +89,11 @@ public class MedicationPlanService {
 
     public List<MedicationPlan> getPlansByPatient(Long patientId) {
         return medicationReminderRepository.findByPatientIdAndIsValid(patientId, 1);
+    }
+
+    /** today-all / 事件推荐：指定日历日全天用药计划（is_valid 0 与 1 均含）。 */
+    public List<MedicationPlan> getTodayAllPlansByPatient(Long patientId, LocalDate today) {
+        return medicationReminderRepository.findAllPlansForPatientOnCalendarDay(patientId, today);
     }
 
     public List<MedicationPlan> getPlansByPatientAndDate(Long patientId, LocalDate date) {

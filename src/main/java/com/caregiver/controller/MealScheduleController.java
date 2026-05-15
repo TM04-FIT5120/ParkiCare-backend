@@ -15,7 +15,11 @@ import java.util.Map;
 public class MealScheduleController {
 
     private final MealScheduleService mealScheduleService;
-
+    /**
+     * Get all meal schedules for a caregiver caregiver.
+     * @param caregiverId The ID of the caregiver.
+     * @return A list of meal schedule responses.
+     */
     @GetMapping("/caregiver/{caregiverId}")
     public List<MealScheduleResponse> getMealSchedules(@PathVariable Long caregiverId) {
         return mealScheduleService.getMealSchedules(caregiverId);
@@ -30,8 +34,13 @@ public class MealScheduleController {
     public MealScheduleResponse updateMealTime(
             @PathVariable Long caregiverId,
             @PathVariable String mealType,
-            @RequestBody Map<String, String> body) {
-        return mealScheduleService.updateMealTime(caregiverId, mealType, body.get("mealTime"));
+            @RequestBody Map<String, Object> body) {
+        Object raw = body.get("mealTime");
+        if (raw == null) {
+            throw new IllegalArgumentException("mealTime is required");
+        }
+        String mealTimeStr = raw.toString().trim();
+        return mealScheduleService.updateMealTime(caregiverId, mealType, mealTimeStr);
     }
 
     @PostMapping("/caregiver/{caregiverId}/generate-week")
