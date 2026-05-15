@@ -83,4 +83,14 @@ public interface MedicationReminderRepository extends JpaRepository<MedicationPl
             @Param("remindTime") LocalTime remindTime
     );
 
+    /**
+     * 当日「全天」用药计划行（不区分 is_valid 0/1）：用于 on/off、事件推荐 medicationTimeList。
+     * 含已完成与未完成排程；条件：startDate≤today，endDate 为空或≥today。
+     */
+    @Query("SELECT m FROM MedicationPlan m WHERE m.patientId = :patientId "
+            + "AND m.startDate <= :today AND (m.endDate IS NULL OR m.endDate >= :today)")
+    List<MedicationPlan> findAllPlansForPatientOnCalendarDay(
+            @Param("patientId") Long patientId,
+            @Param("today") LocalDate today);
+
 }

@@ -39,6 +39,8 @@ public class MedicationReminderService {
         // Keep isValid unchanged so popup confirm does not deactivate the row.
         // Scheduler will not re-fire this row because due query only picks remindStatus = 0.
         plan.setSnoozeTime(null);
+        plan.setObservationDueTime(LocalDateTime.now().plusMinutes(20));
+        plan.setObservationNotified(0);
         medicationReminderRepository.save(plan);
 
         // For recurring plans, create the next occurrence so the reminder fires again
