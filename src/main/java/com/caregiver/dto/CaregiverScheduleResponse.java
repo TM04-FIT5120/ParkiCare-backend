@@ -1,5 +1,6 @@
 package com.caregiver.dto;
 
+import com.caregiver.annotation.Translatable;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -11,9 +12,11 @@ public class CaregiverScheduleResponse {
 
     private Long id;
     private Long caregiverId;
+    @Translatable
     private String scheduleTitle;
     private String startDatetime;
     private String endDatetime;
+    @Translatable
     private String scheduleNote;
     private String recurrence;
     private Integer isCompleted;

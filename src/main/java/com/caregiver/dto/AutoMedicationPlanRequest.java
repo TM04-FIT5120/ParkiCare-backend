@@ -1,5 +1,6 @@
 package com.caregiver.dto;
 
+import com.caregiver.annotation.Translatable;
 import lombok.Data;
 
 @Data
@@ -22,7 +23,7 @@ public class AutoMedicationPlanRequest {
 
     private String dosage;
     private String frequency;
-
+    @Translatable
     private String planNote;
     private String mealTiming;
     private Integer quantity;

@@ -1,5 +1,6 @@
 package com.caregiver.dto;
 
+import com.caregiver.annotation.Translatable;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
@@ -19,5 +20,6 @@ public class PatientRequest {
     private String ageRange;
 
     @Size(max = 500, message = "Remark cannot exceed 500 characters")
+    @Translatable
     private String remark;
 }
