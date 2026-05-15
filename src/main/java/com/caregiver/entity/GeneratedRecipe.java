@@ -38,6 +38,9 @@ public class GeneratedRecipe {
     @Column(name = "health_tip", columnDefinition = "TEXT")
     private String healthTip;
 
+    @Column(name = "category")
+    private String category; // MAIN, SIDE, DESSERT, SNACK
+
     @Column(name = "high_protein_warning", columnDefinition = "TEXT")
     private String highProteinWarning;
 
