@@ -9,6 +9,9 @@ import java.util.List;
 @Service
 public class MedicationReferenceService {
 
+    /** Caps autocomplete payload size and downstream Qwen batch translation cost. */
+    private static final int SEARCH_RESULT_LIMIT = 50;
+
     private final MedicationReferenceRepository medicationReferenceRepository;
 
     public MedicationReferenceService(MedicationReferenceRepository medicationReferenceRepository) {
@@ -19,7 +22,10 @@ public class MedicationReferenceService {
         if (keyword == null || keyword.trim().isEmpty()) {
             return List.of();
         }
-        return medicationReferenceRepository.findByDrugNameContainingIgnoreCaseAndIsValid(keyword.trim(), 1);
+        return medicationReferenceRepository.findByDrugNameContainingIgnoreCaseAndIsValid(keyword.trim(), 1)
+                .stream()
+                .limit(SEARCH_RESULT_LIMIT)
+                .toList();
     }
 
     public List<DrugBase> getDrugs() {

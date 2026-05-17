@@ -2,6 +2,7 @@ package com.caregiver.controller;
 
 import com.caregiver.dto.MealScheduleResponse;
 import com.caregiver.service.MealScheduleService;
+import com.caregiver.service.ScheduleCascadeService;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
@@ -15,6 +16,8 @@ import java.util.Map;
 public class MealScheduleController {
 
     private final MealScheduleService mealScheduleService;
+    private final ScheduleCascadeService scheduleCascadeService;
+
     /**
      * Get all meal schedules for a caregiver caregiver.
      * @param caregiverId The ID of the caregiver.
@@ -40,7 +43,9 @@ public class MealScheduleController {
             throw new IllegalArgumentException("mealTime is required");
         }
         String mealTimeStr = raw.toString().trim();
-        return mealScheduleService.updateMealTime(caregiverId, mealType, mealTimeStr);
+        MealScheduleResponse response = mealScheduleService.updateMealTime(caregiverId, mealType, mealTimeStr);
+        scheduleCascadeService.onMealTimeUpdated(caregiverId);
+        return response;
     }
 
     @PostMapping("/caregiver/{caregiverId}/generate-week")

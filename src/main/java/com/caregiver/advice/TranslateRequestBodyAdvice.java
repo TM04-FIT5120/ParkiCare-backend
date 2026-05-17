@@ -24,9 +24,7 @@ public class TranslateRequestBodyAdvice extends RequestBodyAdviceAdapter {
     public boolean supports(MethodParameter methodParameter,
                             Type targetType,
                             Class<? extends HttpMessageConverter<?>> converterType) {
-
-        // 只处理 Controller 里面带 @RequestBody 的入参
-        return true;
+        return translationService.isTranslationAvailable();
     }
 
     @Override
@@ -36,30 +34,20 @@ public class TranslateRequestBodyAdvice extends RequestBodyAdviceAdapter {
                                 Type targetType,
                                 Class<? extends HttpMessageConverter<?>> converterType) {
 
-        System.out.println("========== RequestBodyAdvice triggered ==========");
-
         if (body == null) {
-            System.out.println("Request body is null");
             return body;
         }
 
         String lang = inputMessage.getHeaders().getFirst("Accept-Language");
 
-        System.out.println("Accept-Language = " + lang);
-        System.out.println("Body class = " + body.getClass().getName());
-        System.out.println("Body before translate = " + body);
-
         if (lang == null || lang.isBlank() || lang.toLowerCase().startsWith("en")) {
-            System.out.println("Skip request translation");
             return body;
         }
 
         try {
             translationService.translateObjectToEnglish(body, lang);
-            System.out.println("Body after translate = " + body);
         } catch (Exception e) {
-            System.out.println("Request translation failed: " + e.getMessage());
-            e.printStackTrace();
+            // Non-fatal — store English as-is when translation fails.
         }
 
         return body;

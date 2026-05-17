@@ -14,4 +14,5 @@ public class LoginResponse {
     private String uniqueId;
     @Translatable
     private String message;
+    private String language;
 }

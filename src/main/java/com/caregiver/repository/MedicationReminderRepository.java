@@ -102,4 +102,18 @@ public interface MedicationReminderRepository extends JpaRepository<MedicationPl
             @Param("patientId") Long patientId,
             @Param("today") LocalDate today);
 
+    @Query("""
+            SELECT m FROM MedicationPlan m
+            JOIN Patient p ON m.patientId = p.id
+            WHERE p.caregiverId = :caregiverId
+              AND m.anchoredMeals IS NOT NULL AND TRIM(m.anchoredMeals) <> ''
+              AND m.mealTiming IS NOT NULL AND TRIM(m.mealTiming) <> ''
+              AND m.isValid = 1
+              AND m.startDate <= :today
+              AND (m.endDate IS NULL OR m.endDate >= :today)
+            """)
+    List<MedicationPlan> findMealAnchoredActiveByCaregiver(
+            @Param("caregiverId") Long caregiverId,
+            @Param("today") LocalDate today);
+
 }

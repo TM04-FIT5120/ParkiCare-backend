@@ -80,9 +80,13 @@ public class EventRecommendationService {
         LocalDateTime now = LocalDateTime.now();
         WeatherResult weatherResult = weatherService.getWeatherAndAQI(request.getLat(), request.getLon());
 
-        String breakfastTime = mealScheduleService.predictMealTime(request.getCaregiverId(), "BREAKFAST");
-        String lunchTime = mealScheduleService.predictMealTime(request.getCaregiverId(), "LUNCH");
-        String dinnerTime = mealScheduleService.predictMealTime(request.getCaregiverId(), "DINNER");
+        LocalDate todayMyt = now.toLocalDate();
+        String breakfastTime = mealScheduleService.resolveEffectiveMealTime(
+                request.getCaregiverId(), "BREAKFAST", todayMyt);
+        String lunchTime = mealScheduleService.resolveEffectiveMealTime(
+                request.getCaregiverId(), "LUNCH", todayMyt);
+        String dinnerTime = mealScheduleService.resolveEffectiveMealTime(
+                request.getCaregiverId(), "DINNER", todayMyt);
 
         List<String> mealBusyWindows = buildMealBusyWindows(now.toLocalDate(), breakfastTime, lunchTime, dinnerTime);
 
@@ -188,13 +192,13 @@ public class EventRecommendationService {
 
         if ("accept".equals(normalized)) {
             saveAcceptedEventToSchedules(
-                    request.getCaregiverId(),
                     patientId,
                     safe(request.getEventName()),
                     eventType,
                     safe(request.getRemark()),
                     startDateTime,
-                    endDateTime
+                    endDateTime,
+                    period
             );
         }
         return savedLog;
@@ -561,25 +565,13 @@ public class EventRecommendationService {
         return LocalDateTime.of(eventDate, t);
     }
 
-    private void saveAcceptedEventToSchedules(Long caregiverId,
-                                              Long patientId,
+    private void saveAcceptedEventToSchedules(Long patientId,
                                               String eventName,
                                               String eventType,
                                               String remark,
                                               LocalDateTime startDateTime,
-                                              LocalDateTime endDateTime) {
-        CaregiverSchedule caregiverSchedule = new CaregiverSchedule();
-        caregiverSchedule.setCaregiverId(caregiverId);
-        caregiverSchedule.setScheduleTitle(eventName);
-        caregiverSchedule.setStartDatetime(startDateTime);
-        caregiverSchedule.setEndDatetime(endDateTime);
-        caregiverSchedule.setScheduleNote(remark);
-        caregiverSchedule.setRecurrence("none");
-        caregiverSchedule.setIsCompleted(0);
-        caregiverSchedule.setIsConflict(0);
-        caregiverSchedule.setIsDeleted(0);
-        caregiverScheduleRepository.save(caregiverSchedule);
-
+                                              LocalDateTime endDateTime,
+                                              String period) {
         if ("home_care".equals(eventType)) {
             PatientHomeCareSchedule home = new PatientHomeCareSchedule();
             home.setPatientId(patientId);
@@ -592,6 +584,8 @@ public class EventRecommendationService {
             home.setRecurrence("none");
             home.setIsDeleted(0);
             home.setIsPinned(0);
+            home.setScheduleSource(ScheduleCascadeService.SCHEDULE_SOURCE_AI);
+            home.setAiMedicationPeriod(period);
             patientHomeCareScheduleRepository.save(home);
         } else {
             PatientOutdoorSchedule outdoor = new PatientOutdoorSchedule();
@@ -604,6 +598,8 @@ public class EventRecommendationService {
             outdoor.setRecurrence("none");
             outdoor.setIsDeleted(0);
             outdoor.setIsPinned(0);
+            outdoor.setScheduleSource(ScheduleCascadeService.SCHEDULE_SOURCE_AI);
+            outdoor.setAiMedicationPeriod(period);
             patientOutdoorScheduleRepository.save(outdoor);
         }
     }

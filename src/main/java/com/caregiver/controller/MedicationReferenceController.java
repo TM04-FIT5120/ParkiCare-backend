@@ -1,10 +1,10 @@
 package com.caregiver.controller;
 
-import com.caregiver.entity.DrugBase;
+import com.caregiver.dto.DrugResponse;
 import com.caregiver.service.MedicationReferenceService;
 import org.springframework.web.bind.annotation.*;
 
-        import java.util.List;
+import java.util.List;
 
 @RestController
 @RequestMapping("/api/reference")
@@ -18,18 +18,22 @@ public class MedicationReferenceController {
     }
 
     @GetMapping("/search")
-    public List<DrugBase> searchDrugs(@RequestParam String keyword) {
-        return medicationReferenceService.searchDrugs(keyword);
+    public List<DrugResponse> searchDrugs(@RequestParam String keyword) {
+        return medicationReferenceService.searchDrugs(keyword).stream()
+                .map(DrugResponse::from)
+                .toList();
     }
 
     @GetMapping("/getAll")
-    public List<DrugBase> getAll() {
-        return medicationReferenceService.getDrugs();
+    public List<DrugResponse> getAll() {
+        return medicationReferenceService.getDrugs().stream()
+                .map(DrugResponse::from)
+                .toList();
     }
 
     @GetMapping("/{drugId:\\d+}")
-    public DrugBase getDrugById(@PathVariable Long drugId) {
-        return medicationReferenceService.getDrugById(drugId);
+    public DrugResponse getDrugById(@PathVariable Long drugId) {
+        return DrugResponse.from(medicationReferenceService.getDrugById(drugId));
     }
 
     @GetMapping("/manufacturers")

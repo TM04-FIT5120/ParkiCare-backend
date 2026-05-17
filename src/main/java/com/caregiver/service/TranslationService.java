@@ -3,6 +3,9 @@ package com.caregiver.service;
 import com.caregiver.annotation.Translatable;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import jakarta.annotation.PostConstruct;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Service;
@@ -14,7 +17,12 @@ import java.util.*;
 @Service
 public class TranslationService {
 
-    @Value("${qwen.api.key}")
+    private static final Logger log = LoggerFactory.getLogger(TranslationService.class);
+
+    /** Qwen output is unreliable above ~30 items; chunk to avoid truncated JSON arrays. */
+    private static final int TRANSLATION_BATCH_SIZE = 25;
+
+    @Value("${qwen.api.key:}")
     private String apiKey;
 
     @Value("${qwen.api.url}")
@@ -23,17 +31,55 @@ public class TranslationService {
     @Value("${qwen.api.model:qwen-plus}")
     private String model;
 
+    @Value("${translation.enabled:true}")
+    private boolean translationEnabled;
+
     private final RestTemplate restTemplate = new RestTemplate();
 
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     private long lastRequestTime = 0L;
 
+    private boolean translationActive;
+
+    @PostConstruct
+    void initTranslation() {
+        translationActive = translationEnabled && apiKey != null && !apiKey.isBlank();
+        if (!translationActive) {
+            log.warn(
+                    "Qwen response/request translation is OFF. Set environment variable QWEN_API_KEY "
+                            + "(or qwen.api.key in application-dev.properties) to enable zh/ms catalog translation."
+            );
+        } else {
+            log.info("Qwen translation enabled (model={}).", model);
+        }
+    }
+
+    public boolean isTranslationAvailable() {
+        return translationActive;
+    }
+
+    /**
+     * Translates a list of strings from one language to another (used by content_translation cache).
+     */
+    public List<String> translateStrings(List<String> texts, String fromLanguageName, String toLanguageName) {
+        if (!translationActive || texts == null || texts.isEmpty()) {
+            return texts == null ? List.of() : new ArrayList<>(texts);
+        }
+        if ("English".equals(fromLanguageName) && "English".equals(toLanguageName)) {
+            return new ArrayList<>(texts);
+        }
+        return translateTextList(texts, fromLanguageName, toLanguageName);
+    }
+
     /**
      * Response 出参翻译：
      * 数据库英文 -> 当前语言
      */
     public void translateObjectToTargetLanguage(Object body, String targetLang) {
+        if (!translationActive) {
+            return;
+        }
         String targetLanguageName = toLanguageName(targetLang);
 
         if (body == null || "English".equals(targetLanguageName)) {
@@ -48,6 +94,9 @@ public class TranslationService {
      * 当前语言 -> 英文
      */
     public void translateObjectToEnglish(Object body, String sourceLang) {
+        if (!translationActive) {
+            return;
+        }
         String sourceLanguageName = toLanguageName(sourceLang);
 
         if (body == null || "English".equals(sourceLanguageName)) {
@@ -61,7 +110,7 @@ public class TranslationService {
      * 核心逻辑：
      * 1. 收集所有 @Translatable 字段
      * 2. 组成 List<String>
-     * 3. 一次调用 Qwen
+     * 3. 分块调用 Qwen（每块最多 {@link #TRANSLATION_BATCH_SIZE} 条）
      * 4. 解析返回 JSON Array
      * 5. 回填原字段
      */
@@ -81,12 +130,11 @@ public class TranslationService {
         List<String> translatedTexts = translateTextList(originalTexts, fromLang, toLang);
 
         if (translatedTexts.size() != fields.size()) {
-            throw new RuntimeException(
-                    "Translation result count mismatch. expected="
-                            + fields.size()
-                            + ", actual="
-                            + translatedTexts.size()
+            log.warn(
+                    "Translation size mismatch after batching; keeping originals for {} field(s)",
+                    fields.size() - translatedTexts.size()
             );
+            translatedTexts = padToSize(originalTexts, translatedTexts);
         }
 
         for (int i = 0; i < fields.size(); i++) {
@@ -171,7 +219,7 @@ public class TranslationService {
     }
 
     /**
-     * 一次把多个字段发给 Qwen
+     * Translates a list in fixed-size chunks so Qwen never returns a truncated array.
      */
     private List<String> translateTextList(List<String> texts,
                                            String fromLang,
@@ -179,6 +227,28 @@ public class TranslationService {
 
         if (texts == null || texts.isEmpty()) {
             return List.of();
+        }
+
+        List<String> allTranslated = new ArrayList<>(texts.size());
+
+        for (int offset = 0; offset < texts.size(); offset += TRANSLATION_BATCH_SIZE) {
+            int end = Math.min(offset + TRANSLATION_BATCH_SIZE, texts.size());
+            List<String> chunk = texts.subList(offset, end);
+            allTranslated.addAll(translateTextBatch(chunk, fromLang, toLang));
+        }
+
+        return allTranslated;
+    }
+
+    /**
+     * Single Qwen call for one chunk (at most {@link #TRANSLATION_BATCH_SIZE} strings).
+     */
+    private List<String> translateTextBatch(List<String> texts,
+                                            String fromLang,
+                                            String toLang) {
+
+        if (!translationActive) {
+            return new ArrayList<>(texts);
         }
 
         String inputJson = toJson(texts);
@@ -193,7 +263,7 @@ public class TranslationService {
                 - Do NOT return markdown.
                 - Do NOT use code fences.
                 - Do NOT explain.
-                - The output array size must be exactly the same as the input array size.
+                - The output array MUST contain exactly %d strings (same as input).
                 - Keep the original order.
                 - Keep medicine names, numbers, dates, times, dosage, and units unchanged when appropriate.
                 - Translate naturally for a mobile app UI.
@@ -201,7 +271,7 @@ public class TranslationService {
 
                 Input JSON array:
                 %s
-                """.formatted(fromLang, toLang, inputJson);
+                """.formatted(fromLang, toLang, texts.size(), inputJson);
 
         Exception lastException = null;
 
@@ -209,20 +279,20 @@ public class TranslationService {
             try {
                 waitIfNeeded();
 
-                Map<String, Object> requestBody = Map.of(
-                        "model", model,
-                        "messages", List.of(
-                                Map.of(
-                                        "role", "system",
-                                        "content", "You are a professional translation engine. Always return valid JSON only."
-                                ),
-                                Map.of(
-                                        "role", "user",
-                                        "content", prompt
-                                )
+                Map<String, Object> requestBody = new LinkedHashMap<>();
+                requestBody.put("model", model);
+                requestBody.put("messages", List.of(
+                        Map.of(
+                                "role", "system",
+                                "content", "You are a professional translation engine. Always return valid JSON only."
                         ),
-                        "temperature", 0.1
-                );
+                        Map.of(
+                                "role", "user",
+                                "content", prompt
+                        )
+                ));
+                requestBody.put("temperature", 0.1);
+                requestBody.put("max_tokens", Math.min(8192, Math.max(1024, texts.size() * 256)));
 
                 HttpHeaders headers = new HttpHeaders();
                 headers.setContentType(MediaType.APPLICATION_JSON);
@@ -238,22 +308,38 @@ public class TranslationService {
                 );
 
                 String resultText = extractQwenText(response.getBody());
+                List<String> translated = parseJsonArray(resultText);
 
-                return parseJsonArray(resultText);
+                if (translated.size() == texts.size()) {
+                    return translated;
+                }
+
+                lastException = new RuntimeException(
+                        "Translation result count mismatch. expected="
+                                + texts.size()
+                                + ", actual="
+                                + translated.size()
+                );
 
             } catch (Exception e) {
                 lastException = e;
+            }
 
-                try {
-                    Thread.sleep(1000L * attempt);
-                } catch (InterruptedException interruptedException) {
-                    Thread.currentThread().interrupt();
-                    throw new RuntimeException("Translation interrupted", interruptedException);
-                }
+            try {
+                Thread.sleep(1000L * attempt);
+            } catch (InterruptedException interruptedException) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException("Translation interrupted", interruptedException);
             }
         }
 
-        throw new RuntimeException("Qwen translation failed after 3 attempts", lastException);
+        // Degrade gracefully: keep English for this chunk instead of failing the API.
+        log.warn(
+                "Translation batch failed after 3 attempts (size={}): {}",
+                texts.size(),
+                lastException != null ? lastException.getMessage() : "unknown"
+        );
+        return new ArrayList<>(texts);
     }
 
     /**
@@ -327,6 +413,15 @@ public class TranslationService {
                     e
             );
         }
+    }
+
+    /** Ensures translated list aligns with field count (fallback to originals). */
+    private List<String> padToSize(List<String> originals, List<String> translated) {
+        List<String> result = new ArrayList<>(originals.size());
+        for (int i = 0; i < originals.size(); i++) {
+            result.add(i < translated.size() ? translated.get(i) : originals.get(i));
+        }
+        return result;
     }
 
     private String toJson(List<String> texts) {

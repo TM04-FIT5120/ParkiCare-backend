@@ -6,6 +6,8 @@ import com.caregiver.entity.MedicationPlan;
 import com.caregiver.repository.DrugBaseRepository;
 import com.caregiver.repository.MedicationPlanRepository;
 import com.caregiver.util.ExportTimeFileStore;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.lowagie.text.*;
 import com.lowagie.text.pdf.PdfPTable;
 import com.lowagie.text.pdf.PdfWriter;
@@ -423,7 +425,7 @@ public class MedicationReportService {
                 String remindStatus = (p.getRemindStatus() != null && p.getRemindStatus() == 1)
                         ? "complete"
                         : "incomplete";
-                String notes = p.getPlanNote() == null ? "" : p.getPlanNote();
+                String notes = formatPlanNote(p.getPlanNote());
 
                 detailTable.addCell(new Phrase(drugName, tableFont));
                 detailTable.addCell(new Phrase(drugCompany, tableFont));
@@ -444,6 +446,60 @@ public class MedicationReportService {
 
         } catch (Exception e) {
             throw new RuntimeException("Failed to generate medication report PDF", e);
+        }
+    }
+
+    private static final String[] Q_FULL = {
+        "Q1. Is there a clear improvement in movement?",
+        "Q2. Does the shaking/tremor decrease or stop entirely?",
+        "Q3. Any new involuntary wiggling, swaying, or fidgeting when medication is strongest?",
+        "Q4. Increase in nausea or lightheadedness/dizziness after standing up?",
+    };
+
+    private static final String[][] Q_OPTIONS = {
+        {"Yes, significant improvement",    "Somewhat improved",           "No noticeable change"},
+        {"Yes, significantly decreases",    "Somewhat decreases",          "No noticeable change"},
+        {"No",                              "Yes, mild (no interference)", "Yes, severe (interferes)"},
+        {"No",                              "Yes, mild nausea/dizziness",  "Yes, severe nausea/dizziness"},
+    };
+
+    private String formatPlanNote(String planNote) {
+        if (planNote == null || planNote.isBlank()) return "";
+        String trimmed = planNote.trim();
+        if (!trimmed.startsWith("{")) return trimmed;
+        try {
+            // Collapse unescaped newlines/carriage-returns inside the JSON string
+            // (Jackson's strict parser rejects literal control chars in string values)
+            String cleaned = trimmed
+                    .replace("\r\n", " ")
+                    .replace('\r', ' ')
+                    .replace('\n', ' ');
+
+            ObjectMapper mapper = new ObjectMapper();
+            JsonNode root = mapper.readTree(cleaned);
+
+            StringBuilder sb = new StringBuilder();
+            String[] qKeys = {"q1", "q2", "q3", "q4"};
+            for (int i = 0; i < qKeys.length; i++) {
+                JsonNode ansNode = root.get(qKeys[i]);
+                if (ansNode != null && !ansNode.isNull()) {
+                    int ans = ansNode.asInt(-1);
+                    String answer = (ans >= 0 && ans < Q_OPTIONS[i].length) ? Q_OPTIONS[i][ans] : "-";
+                    sb.append(Q_FULL[i]).append("\n")
+                      .append("   -> ").append(answer).append("\n\n");
+                }
+            }
+
+            JsonNode noteNode = root.get("note");
+            String noteText = noteNode != null && !noteNode.isNull() ? noteNode.asText("").trim() : "";
+            if (!noteText.isEmpty()) {
+                sb.append("Additional Notes:\n   ").append(noteText);
+            }
+
+            return sb.toString().trim();
+        } catch (Exception e) {
+            // If JSON parsing fails for any reason, return the raw string as-is
+            return trimmed;
         }
     }
 

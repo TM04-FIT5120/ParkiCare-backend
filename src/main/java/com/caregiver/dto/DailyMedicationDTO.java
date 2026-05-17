@@ -1,5 +1,6 @@
 package com.caregiver.dto;
 
+import com.caregiver.annotation.Translatable;
 import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
@@ -12,6 +13,8 @@ public class DailyMedicationDTO {
     private String date;
 
     private Long drugId;
+
+    @Translatable
     private String drugName;
 
     private Integer targetFrequency;

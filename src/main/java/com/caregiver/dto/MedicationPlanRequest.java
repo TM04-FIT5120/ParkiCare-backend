@@ -38,6 +38,9 @@ public class MedicationPlanRequest {
 
     private String mealTiming;
 
+    /** Comma-separated meal types when doses are anchored to meals (e.g. BREAKFAST,LUNCH). */
+    private String anchoredMeals;
+
     private Integer quantity;
 
     private String intakeMethod;

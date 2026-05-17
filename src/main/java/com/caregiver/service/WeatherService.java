@@ -65,25 +65,30 @@ public class WeatherService {
 
     public WeatherResult getWeatherAndAQI(double lat, double lon) {
         try {
-            String waqiUrl = waqiApiUrl
-                    + "/geo:" + lat + ";" + lon
-                    + "/?token=" + waqiApiKey;
-
-            ResponseEntity<String> waqiResponse = restTemplate.getForEntity(waqiUrl, String.class);
-            JsonNode waqiRoot = objectMapper.readTree(waqiResponse.getBody());
-
-            if (!"ok".equalsIgnoreCase(waqiRoot.path("status").asText())) {
-                throw new RuntimeException("Failed to fetch AQI data");
+            // --- AQI (WAQI) — non-fatal: null if key missing or station unavailable ---
+            Integer aqi = null;
+            double waqiTemperature = Double.NaN;
+            if (waqiApiKey != null && !waqiApiKey.isBlank()) {
+                try {
+                    String waqiUrl = waqiApiUrl
+                            + "/geo:" + lat + ";" + lon
+                            + "/?token=" + waqiApiKey;
+                    ResponseEntity<String> waqiResponse = restTemplate.getForEntity(waqiUrl, String.class);
+                    JsonNode waqiRoot = objectMapper.readTree(waqiResponse.getBody());
+                    if ("ok".equalsIgnoreCase(waqiRoot.path("status").asText())) {
+                        JsonNode waqiData = waqiRoot.path("data");
+                        int rawAqi = waqiData.path("aqi").asInt(-1);
+                        if (rawAqi >= 0) {
+                            aqi = rawAqi;
+                        }
+                        waqiTemperature = waqiData.path("iaqi").path("t").path("v").asDouble(Double.NaN);
+                    }
+                } catch (Exception ignored) {
+                    // AQI unavailable — continue with OpenWeatherMap only
+                }
             }
 
-            JsonNode waqiData = waqiRoot.path("data");
-            int aqi = waqiData.path("aqi").asInt(-1);
-            if (aqi < 0) {
-                throw new RuntimeException("AQI data not available");
-            }
-
-            double temperature = waqiData.path("iaqi").path("t").path("v").asDouble(Double.NaN);
-
+            // --- Weather + temperature (OpenWeatherMap) ---
             String weatherUrl = openWeatherWeatherUrl
                     + "?lat=" + lat
                     + "&lon=" + lon
@@ -98,17 +103,15 @@ public class WeatherService {
                     : null;
 
             String weather = weatherNode != null ? weatherNode.path("main").asText("Unknown") : "Unknown";
-            String weatherDescRaw = weatherNode != null ? weatherNode.path("description").asText("No weather description") : "No weather description";
+            String weatherDesc = weatherNode != null ? weatherNode.path("description").asText("No weather description") : "No weather description";
 
-            if (Double.isNaN(temperature)) {
-                temperature = weatherRoot.path("main").path("temp").asDouble(Double.NaN);
-            }
+            double temperature = Double.isNaN(waqiTemperature)
+                    ? weatherRoot.path("main").path("temp").asDouble(Double.NaN)
+                    : waqiTemperature;
 
             if (Double.isNaN(temperature)) {
                 throw new RuntimeException("Temperature data not available");
             }
-
-            String weatherDesc = weatherDescRaw;
 
             return new WeatherResult(temperature, weather, weatherDesc, aqi);
         } catch (RuntimeException e) {

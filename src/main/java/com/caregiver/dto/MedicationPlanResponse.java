@@ -15,6 +15,8 @@ public class MedicationPlanResponse {
     private Long drugId;
 
     private String dosage;
+
+    @Translatable
     private String frequency;
 
     private String date;
@@ -25,9 +27,14 @@ public class MedicationPlanResponse {
     @Translatable
     private String note;
 
+    @Translatable
     private String mealTiming;
+
     private Integer quantity;
+
+    @Translatable
     private String intakeMethod;
+
     private String endDate;
     private String recurrence;
 }

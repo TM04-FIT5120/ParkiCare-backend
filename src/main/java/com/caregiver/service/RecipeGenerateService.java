@@ -12,7 +12,9 @@ import org.springframework.http.*;
 import org.springframework.stereotype.Service;
 import org.springframework.web.client.RestTemplate;
 
+import com.fasterxml.jackson.databind.node.ArrayNode;
 import java.math.BigDecimal;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
@@ -36,6 +38,7 @@ public class RecipeGenerateService {
 
     private final FoodNutritionRepository foodNutritionRepository;
     private final GeneratedRecipeRepository generatedRecipeRepository;
+    private final ContentTranslationService contentTranslationService;
 
     public Map<String, Object> generateRecipe(RecipeGenerateRequest request) {
 
@@ -99,10 +102,23 @@ public class RecipeGenerateService {
                     .path("content")
                     .asText();
 
+            JsonNode aiRoot = objectMapper.readTree(aiContent);
+            JsonNode recipesNode = aiRoot.path("recipes");
+
+            // Hard cap: never return more than 2 recipes regardless of what the AI produced.
+            if (recipesNode.isArray() && recipesNode.size() > 2) {
+                ArrayNode capped = objectMapper.createArrayNode();
+                capped.add(recipesNode.get(0));
+                capped.add(recipesNode.get(1));
+                ((com.fasterxml.jackson.databind.node.ObjectNode) aiRoot).set("recipes", capped);
+                aiContent = objectMapper.writeValueAsString(aiRoot);
+                recipesNode = capped;
+            }
+
             persistRecipes(aiContent, foods, caregiverId, hasHighProtein, referenceSource, highProteinFoodNames);
 
             return Map.of(
-                    "recipes", objectMapper.readTree(aiContent).path("recipes"),
+                    "recipes", recipesNode,
                     "highProteinWarning", hasHighProtein ? HIGH_PROTEIN_WARNING : "",
                     "referenceSource", referenceSource != null ? referenceSource : ""
             );
@@ -144,7 +160,8 @@ public class RecipeGenerateService {
                 recipe.setCategory(recipeNode.path("category").asText("MAIN"));
                 recipe.setHighProteinWarning(recipeHasHighProtein ? HIGH_PROTEIN_WARNING : null);
                 recipe.setReferenceSource(recipeHasHighProtein ? referenceSource : null);
-                generatedRecipeRepository.save(recipe);
+                GeneratedRecipe saved = generatedRecipeRepository.save(recipe);
+                contentTranslationService.cacheRecipeTranslations(saved);
             }
         } catch (Exception e) {
             // Persistence failure should not block the response
@@ -196,9 +213,11 @@ public class RecipeGenerateService {
                 + "The content must be in English. "
                 + "Use only the provided ingredients as the main ingredients. "
                 + "You may use basic cooking materials such as water, a very small amount of oil, herbs, or mild seasoning if needed. Mark them as optional. "
-                + "The meal plan must always include exactly one MAIN dish (category: \"MAIN\") which uses the primary protein and carbohydrate ingredients. "
+                + "IMPORTANT: The recipes array must contain a MAXIMUM of 2 recipes total. Never return more than 2 recipes under any circumstances. "
+                + "The first recipe must always be the MAIN dish (category: \"MAIN\") using the primary protein and carbohydrate ingredients. "
                 + "If the provided ingredients include fruits, light foods, or items naturally suited for a side dish, dessert, or snack, also generate exactly one additional item with the appropriate category: \"SIDE\", \"DESSERT\", or \"SNACK\". "
-                + "If all ingredients are best used together in a single main dish, generate only one recipe with category \"MAIN\" and no additional item. "
+                + "If all ingredients fit together in one main dish, or if there is not one clearly distinct light/fruit ingredient left over, generate only 1 recipe with category \"MAIN\". "
+                + "Do not generate separate recipes for similar ingredients — combine them. The total recipe count must be 1 or 2, never 3 or more. "
                 + "Each item in the recipes array must include a \"category\" field. Valid values are: \"MAIN\", \"SIDE\", \"DESSERT\", \"SNACK\". "
                 + "The recipes should remain low sugar, low salt, and low saturated fat. "
                 + "Avoid high-salt, high-sugar, deep-fried, or high-saturated-fat cooking methods. "
@@ -212,14 +231,25 @@ public class RecipeGenerateService {
                 + "The recipes should be suitable for elderly Parkinson's patients and family caregivers. "
                 + "Do not provide medical diagnosis or treatment advice. "
                 + "Write caregiver-friendly explanations. "
-                + "Strictly return the result using this JSON structure only: "
+                + "Strictly return the result using this JSON structure only. "
+                + "When generating only a main dish, return one object in the recipes array. "
+                + "When generating a main dish plus a side or dessert, return two objects with different category values as shown below: "
                 + "{"
                 + "\"recipes\":["
                 + "{"
-                + "\"recipeTitle\":\"Recipe name\","
+                + "\"recipeTitle\":\"Main dish name\","
                 + "\"category\":\"MAIN\","
                 + "\"ingredients\":[\"ingredient 1\",\"ingredient 2\"],"
                 + "\"steps\":[\"step 1\",\"step 2\",\"step 3\"],"
+                + "\"suitableDesc\":\"Explain why this recipe is suitable for Parkinson patients\","
+                + "\"unsuitableDesc\":\"Explain who should avoid or be careful with this recipe\","
+                + "\"healthTip\":\"Health tip for Parkinson caregivers\""
+                + "},"
+                + "{"
+                + "\"recipeTitle\":\"Side dish or dessert name\","
+                + "\"category\":\"SIDE\","
+                + "\"ingredients\":[\"ingredient 1\",\"ingredient 2\"],"
+                + "\"steps\":[\"step 1\",\"step 2\"],"
                 + "\"suitableDesc\":\"Explain why this recipe is suitable for Parkinson patients\","
                 + "\"unsuitableDesc\":\"Explain who should avoid or be careful with this recipe\","
                 + "\"healthTip\":\"Health tip for Parkinson caregivers\""
