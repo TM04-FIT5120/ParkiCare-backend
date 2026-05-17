@@ -27,4 +27,7 @@ public class Caregiver {
 
     @Column(name = "is_active", nullable = false)
     private Integer isActive = 1;
+
+    @Column(name = "language", nullable = false, length = 10)
+    private String language = "en";
 }

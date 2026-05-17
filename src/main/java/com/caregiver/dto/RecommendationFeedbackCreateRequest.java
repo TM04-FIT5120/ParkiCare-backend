@@ -1,5 +1,6 @@
 package com.caregiver.dto;
 
+import com.caregiver.annotation.Translatable;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Max;
@@ -19,6 +20,7 @@ public class RecommendationFeedbackCreateRequest {
     private Double lon;
 
     @NotBlank(message = "Event name cannot be empty")
+    @Translatable
     private String eventName;
 
     @NotBlank(message = "Period cannot be empty")
@@ -36,6 +38,7 @@ public class RecommendationFeedbackCreateRequest {
     private Integer durationMinutes;
 
     @NotBlank(message = "Remark cannot be empty")
+    @Translatable
     private String remark;
 
     @NotBlank(message = "Feedback cannot be empty")

@@ -34,6 +34,7 @@ public class MedicationPlanService {
                                                      LocalDate startDate,
                                                      String planNote,
                                                      String mealTiming,
+                                                     String anchoredMeals,
                                                      Integer quantity,
                                                      String intakeMethod,
                                                      LocalDate endDate,
@@ -78,6 +79,7 @@ public class MedicationPlanService {
             plan.setIsValid(1);
             plan.setPlanNote(planNote);
             plan.setMealTiming(mealTiming);
+            plan.setAnchoredMeals(anchoredMeals);
             plan.setQuantity(quantity);
             plan.setIntakeMethod(intakeMethod);
             plan.setEndDate(endDate);

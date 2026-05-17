@@ -1,5 +1,6 @@
 package com.caregiver.service;
 
+import com.caregiver.dto.FoodNutritionResponse;
 import com.caregiver.entity.FoodNutrition;
 import com.caregiver.repository.FoodNutritionRepository;
 import lombok.RequiredArgsConstructor;
@@ -12,6 +13,38 @@ import java.util.List;
 public class FoodNutritionService {
 
     private final FoodNutritionRepository foodNutritionRepository;
+    private final ContentTranslationService contentTranslationService;
+
+    public List<FoodNutritionResponse> getAllFoodsLocalized(String locale) {
+        return localize(foodNutritionRepository.findAll(), locale);
+    }
+
+    public FoodNutritionResponse getFoodByIdLocalized(Long id, String locale) {
+        FoodNutrition food = getFoodById(id);
+        return localize(List.of(food), locale).get(0);
+    }
+
+    public List<FoodNutritionResponse> getFoodsByCategoryLocalized(String category, String locale) {
+        return localize(foodNutritionRepository.findByCategory(category), locale);
+    }
+
+    public List<FoodNutritionResponse> getFoodsBySafetyStatusLocalized(String safetyStatus, String locale) {
+        return localize(foodNutritionRepository.findBySafetyStatus(safetyStatus), locale);
+    }
+
+    public List<FoodNutritionResponse> searchFoodsByNameLocalized(String keyword, String locale) {
+        return localize(foodNutritionRepository.findByFoodNameContainingIgnoreCase(keyword), locale);
+    }
+
+    public List<FoodNutritionResponse> filterFoodsLocalized(
+            String category, String safetyStatus, String keyword, String locale
+    ) {
+        return localize(filterFoods(category, safetyStatus, keyword), locale);
+    }
+
+    private List<FoodNutritionResponse> localize(List<FoodNutrition> entities, String locale) {
+        return contentTranslationService.getLocalizedFoods(entities, locale);
+    }
 
     public List<FoodNutrition> getAllFoods() {
         return foodNutritionRepository.findAll();

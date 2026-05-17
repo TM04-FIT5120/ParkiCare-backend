@@ -67,8 +67,17 @@ public class AuthService {
                 caregiver.getId(),
                 caregiver.getNickname(),
                 caregiver.getUniqueId(),
-                "Login successful"
+                "Login successful",
+                caregiver.getLanguage()
         );
+    }
+
+    @Transactional
+    public void updateLanguage(Long caregiverId, String language) {
+        Caregiver caregiver = caregiverRepository.findById(caregiverId)
+                .orElseThrow(() -> new RuntimeException("Caregiver not found"));
+        caregiver.setLanguage(language);
+        caregiverRepository.save(caregiver);
     }
 
     private String generateNextUniqueId() {

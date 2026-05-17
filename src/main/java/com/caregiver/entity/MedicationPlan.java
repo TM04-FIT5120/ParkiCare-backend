@@ -57,11 +57,15 @@ public class MedicationPlan {
     @Column(name = "is_valid", nullable = false)
     private Integer isValid = 1;
 
-    @Column(name = "plan_note", length = 200)
+    @Column(name = "plan_note", length = 600)
     private String planNote;
 
     @Column(name = "meal_timing", length = 20)
     private String mealTiming;
+
+    /** Comma-separated BREAKFAST,LUNCH,DINNER when doses are meal-anchored. */
+    @Column(name = "anchored_meals", length = 60)
+    private String anchoredMeals;
 
     @Column(name = "quantity")
     private Integer quantity;

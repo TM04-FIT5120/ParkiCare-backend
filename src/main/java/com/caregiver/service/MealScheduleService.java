@@ -8,6 +8,7 @@ import com.caregiver.repository.MealScheduleRepository;
 import com.caregiver.util.MealTimeRegressionUtil;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -26,21 +27,12 @@ public class MealScheduleService {
     private final CaregiverScheduleRepository caregiverScheduleRepository;
 
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
-    private static final ZoneId MYT = ZoneId.of("Asia/Kuala_Lumpur");
+    public static final ZoneId MYT = ZoneId.of("Asia/Kuala_Lumpur");
     private static final String MEAL_NOTE_PREFIX = "meal:";
 
-    /** Use only the latest N logged times for prediction. */
     private static final int PREDICTION_HISTORY_WINDOW = 14;
-
-    /** Cap forward extrapolation (days beyond last sample) when using day-axis regression. */
     private static final int MAX_REGRESSION_FORWARD_DAYS = 7;
-
-    /** If quadratic prediction differs from linear by more than this, use linear (minutes). */
     private static final int MAX_QUAD_VS_LINEAR_DIFF_MINUTES = 90;
-
-    /**
-     * If |c2| in y≈c0+c1*x+c2*x^2 exceeds this (minutes per day²), quadratic extrapolation is too sharp.
-     */
     private static final double MAX_QUAD_CURVATURE = 2.0;
 
     private static final Map<String, LocalTime> DEFAULTS = new LinkedHashMap<>();
@@ -58,39 +50,45 @@ public class MealScheduleService {
     );
 
     public List<MealScheduleResponse> getMealSchedules(Long caregiverId) {
+        LocalDate todayMyt = LocalDate.now(MYT);
         List<MealScheduleResponse> result = new ArrayList<>();
         for (String mealType : DEFAULTS.keySet()) {
             result.add(new MealScheduleResponse(caregiverId, mealType,
-                    predictMealTime(caregiverId, mealType)));
+                    resolveEffectiveMealTime(caregiverId, mealType, todayMyt)));
         }
         return result;
     }
 
-
-/**
- * update the meal time for a caregiver caregiver.
- * @param caregiverId The ID of the caregiver caregiver.
- * @param mealType The meal type to update.
- * @param mealTimeStr The meal time string in HH:mm format.
- * @return The updated meal schedule response.
- * @throws IllegalArgumentException If mealTime is null or blank.
- */
-    public MealScheduleResponse updateMealTime(Long caregiverId, String mealType, String mealTimeStr) {
-    // 将用餐类型转换为大写
+    /**
+     * Effective meal time for a calendar day: manual override for that MYT day, else regression.
+     */
+    public String resolveEffectiveMealTime(Long caregiverId, String mealType, LocalDate dayMyt) {
         String upperType = mealType.toUpperCase();
-    // 检查用餐时间字符串是否为空
+        Optional<MealSchedule> override = findLatestForMytDay(caregiverId, upperType, dayMyt);
+        if (override.isPresent()) {
+            return override.get().getMealTime().format(TIME_FMT);
+        }
+        return predictMealTime(caregiverId, upperType, dayMyt);
+    }
+
+    public Map<String, String> buildEffectiveMealTimesMap(Long caregiverId, LocalDate dayMyt) {
+        Map<String, String> map = new LinkedHashMap<>();
+        for (String mealType : DEFAULTS.keySet()) {
+            map.put(mealType, resolveEffectiveMealTime(caregiverId, mealType, dayMyt));
+        }
+        return map;
+    }
+
+    @Transactional
+    public MealScheduleResponse updateMealTime(Long caregiverId, String mealType, String mealTimeStr) {
+        String upperType = mealType.toUpperCase();
         if (mealTimeStr == null || mealTimeStr.isBlank()) {
             throw new IllegalArgumentException("mealTime is required");
         }
-    // 解析用餐时间字符串为LocalTime对象
         LocalTime mealTime = LocalTime.parse(mealTimeStr.trim(), TIME_FMT);
-    // 获取马来西亚时区的当前日期
         LocalDate dayMyt = LocalDate.now(MYT);
-    // 获取马来西亚时区的当前日期时间
         LocalDateTime nowMyt = LocalDateTime.now(MYT);
 
-        // At most one row per (caregiver, meal type, MYT calendar day): same-day edits overwrite.
-        // Resolve in Java (not native DATE bind) to avoid JDBC/LocalDate mismatch with MySQL DATE().
         MealSchedule entity = findLatestForMytDay(caregiverId, upperType, dayMyt).orElseGet(() -> {
             MealSchedule m = new MealSchedule();
             m.setCaregiverId(caregiverId);
@@ -101,18 +99,26 @@ public class MealScheduleService {
         entity.setRecordedAt(nowMyt);
         MealSchedule saved = mealScheduleRepository.save(entity);
 
-        syncRemainingWeekMealEntries(caregiverId, List.of(toResponse(saved)));
+        syncRemainingWeekMealEntries(caregiverId);
 
         return toResponse(saved);
     }
 
     public List<MealScheduleResponse> refreshPredictedMealTimes(Long caregiverId) {
         List<MealScheduleResponse> predictedMeals = getMealSchedules(caregiverId);
-        syncRemainingWeekMealEntries(caregiverId, predictedMeals);
+        syncRemainingWeekMealEntries(caregiverId);
         return predictedMeals;
     }
 
     public String predictMealTime(Long caregiverId, String mealType) {
+        return predictMealTime(caregiverId, mealType, LocalDate.now(MYT));
+    }
+
+    /**
+     * Regression prediction for {@code targetDayMyt}, excluding samples logged on that same day
+     * so manual overrides do not skew the model when the override is not in effect.
+     */
+    public String predictMealTime(Long caregiverId, String mealType, LocalDate targetDayMyt) {
         String upperType = mealType.toUpperCase();
         List<MealSchedule> rows = mealScheduleRepository
                 .findByCaregiverIdAndMealTypeOrderByIdAsc(caregiverId, upperType);
@@ -125,9 +131,18 @@ public class MealScheduleService {
                 .comparing(MealSchedule::getRecordedAt, Comparator.nullsLast(Comparator.naturalOrder()))
                 .thenComparing(MealSchedule::getId));
 
-        int n = rows.size();
+        List<MealSchedule> filtered = rows.stream()
+                .filter(m -> m.getRecordedAt() == null
+                        || !targetDayMyt.equals(m.getRecordedAt().toLocalDate()))
+                .toList();
+
+        if (filtered.isEmpty()) {
+            return DEFAULTS.getOrDefault(upperType, LocalTime.of(8, 0)).format(TIME_FMT);
+        }
+
+        int n = filtered.size();
         int from = Math.max(0, n - PREDICTION_HISTORY_WINDOW);
-        List<MealSchedule> window = rows.subList(from, n);
+        List<MealSchedule> window = filtered.subList(from, n);
 
         List<Integer> windowMinutes = new ArrayList<>(window.size());
         for (MealSchedule meal : window) {
@@ -140,32 +155,30 @@ public class MealScheduleService {
         } else {
             boolean allHaveRecordedAt = window.stream().allMatch(m -> m.getRecordedAt() != null);
             if (allHaveRecordedAt) {
-                // x = whole days between first sample's calendar day and each recorded_at (MYT dates stored as wall clock).
                 LocalDate anchorDay = window.get(0).getRecordedAt().toLocalDate();
                 List<Double> xDays = new ArrayList<>(window.size());
                 for (MealSchedule m : window) {
                     xDays.add((double) ChronoUnit.DAYS.between(anchorDay, m.getRecordedAt().toLocalDate()));
                 }
-                LocalDate todayMyt = LocalDate.now(MYT);
-                double xToday = Math.max(0.0, ChronoUnit.DAYS.between(anchorDay, todayMyt));
+                double xTarget = Math.max(0.0, ChronoUnit.DAYS.between(anchorDay, targetDayMyt));
                 double lastX = xDays.get(xDays.size() - 1);
-                double xPredict = xToday;
+                double xPredict = xTarget;
                 if (xPredict > lastX + MAX_REGRESSION_FORWARD_DAYS) {
                     xPredict = lastX + MAX_REGRESSION_FORWARD_DAYS;
                 }
                 if (lastX > 0 || xDays.stream().anyMatch(x -> x > 0)) {
                     predictedMinute = regressMinuteFromXDays(xDays, windowMinutes, xPredict);
                 } else {
-                    // All samples same calendar day: spread x by time-of-day within that day
                     LocalDateTime anchorDt = window.get(0).getRecordedAt();
                     List<Double> xFrac = new ArrayList<>(window.size());
                     for (MealSchedule m : window) {
                         long minutesFromAnchor = ChronoUnit.MINUTES.between(anchorDt, m.getRecordedAt());
                         xFrac.add(minutesFromAnchor / 1440.0);
                     }
-                    double xTodayFrac = Math.max(0.0, ChronoUnit.MINUTES.between(anchorDt, LocalDateTime.now(MYT)) / 1440.0);
+                    double xTargetFrac = Math.max(0.0,
+                            ChronoUnit.MINUTES.between(anchorDt, targetDayMyt.atStartOfDay()) / 1440.0);
                     double lastXf = xFrac.get(xFrac.size() - 1);
-                    double xPredFrac = xTodayFrac;
+                    double xPredFrac = xTargetFrac;
                     if (xPredFrac > lastXf + MAX_REGRESSION_FORWARD_DAYS) {
                         xPredFrac = lastXf + MAX_REGRESSION_FORWARD_DAYS;
                     }
@@ -187,8 +200,6 @@ public class MealScheduleService {
         LocalDateTime weekStart = monday.atStartOfDay();
         LocalDateTime weekEnd = sunday.atTime(23, 59, 59);
 
-        // Soft-delete ALL existing meal entries for this week first.
-        // This cleans up any duplicates from previous runs before recreating cleanly.
         List<CaregiverSchedule> existing = caregiverScheduleRepository
                 .findByCaregiverIdAndStartDatetimeBetweenAndIsDeleted(caregiverId, weekStart, weekEnd, 0);
         for (CaregiverSchedule cs : existing) {
@@ -198,19 +209,18 @@ public class MealScheduleService {
             }
         }
 
-        // Recreate exactly 7 × 3 = 21 entries for this week
-        List<MealScheduleResponse> meals = getMealSchedules(caregiverId);
         for (LocalDate day = monday; !day.isAfter(sunday); day = day.plusDays(1)) {
-            for (MealScheduleResponse meal : meals) {
-                LocalTime mealTime = LocalTime.parse(meal.getMealTime(), TIME_FMT);
+            for (String mealType : DEFAULTS.keySet()) {
+                String mealTimeStr = resolveEffectiveMealTime(caregiverId, mealType, day);
+                LocalTime mealTime = LocalTime.parse(mealTimeStr, TIME_FMT);
                 LocalDateTime start = day.atTime(mealTime);
 
                 CaregiverSchedule cs = new CaregiverSchedule();
                 cs.setCaregiverId(caregiverId);
-                cs.setScheduleTitle(MEAL_LABELS.getOrDefault(meal.getMealType(), meal.getMealType()));
+                cs.setScheduleTitle(MEAL_LABELS.getOrDefault(mealType, mealType));
                 cs.setStartDatetime(start);
                 cs.setEndDatetime(start.plusHours(1));
-                cs.setScheduleNote(MEAL_NOTE_PREFIX + meal.getMealType());
+                cs.setScheduleNote(MEAL_NOTE_PREFIX + mealType);
                 cs.setRecurrence("none");
                 cs.setIsCompleted(0);
                 cs.setIsConflict(0);
@@ -220,11 +230,7 @@ public class MealScheduleService {
         }
     }
 
-    /**
-     * Latest row for this caregiver + meal type whose {@code recorded_at} falls on {@code dayMyt}
-     * (wall-clock date of the stored {@link LocalDateTime}, aligned with {@link #MYT} “today” logic).
-     */
-    private Optional<MealSchedule> findLatestForMytDay(Long caregiverId, String mealType, LocalDate dayMyt) {
+    Optional<MealSchedule> findLatestForMytDay(Long caregiverId, String mealType, LocalDate dayMyt) {
         return mealScheduleRepository.findByCaregiverIdAndMealTypeOrderByIdAsc(caregiverId, mealType).stream()
                 .filter(m -> m.getRecordedAt() != null && dayMyt.equals(m.getRecordedAt().toLocalDate()))
                 .max(Comparator.comparing(MealSchedule::getId));
@@ -244,10 +250,6 @@ public class MealScheduleService {
                 .orElse(0));
     }
 
-    /**
-     * 众数（分钟数）：出现次数最多的用餐时刻；若并列多只取这些众数的算术平均（四舍五入）；
-     * 若每个样本分钟都不同（无众数），退化为与 {@link #averageMealMinute} 相同的均值。
-     */
     private int modeMealMinute(List<Integer> mealMinutes) {
         if (mealMinutes == null || mealMinutes.isEmpty()) {
             throw new IllegalArgumentException("Meal minutes cannot be empty");
@@ -268,7 +270,6 @@ public class MealScheduleService {
         return (int) Math.round(modes.stream().mapToInt(Integer::intValue).average().orElse(modes.get(0)));
     }
 
-    /** Linear / quadratic regression on x vs meal minutes, with mode fallbacks when regression is unusable. */
     private int regressMinuteFromXDays(List<Double> xDays, List<Integer> windowMinutes, double xPredict) {
         OptionalInt linear = MealTimeRegressionUtil.predictLinearMinute(xDays, windowMinutes, xPredict);
         if (windowMinutes.size() >= 4) {
@@ -307,7 +308,7 @@ public class MealScheduleService {
         return modeMealMinute(new ArrayList<>(windowMinutes));
     }
 
-    private void syncRemainingWeekMealEntries(Long caregiverId, List<MealScheduleResponse> meals) {
+    private void syncRemainingWeekMealEntries(Long caregiverId) {
         LocalDate today = LocalDate.now(MYT);
         LocalDate sunday = today.getDayOfWeek() == DayOfWeek.SUNDAY
                 ? today
@@ -320,23 +321,16 @@ public class MealScheduleService {
                         sunday.atTime(23, 59, 59),
                         0);
 
-        Map<String, LocalTime> predictedTimes = new HashMap<>();
-        for (MealScheduleResponse meal : meals) {
-            predictedTimes.put(meal.getMealType(), LocalTime.parse(meal.getMealTime(), TIME_FMT));
-        }
-
         for (CaregiverSchedule cs : weekEntries) {
             if (cs.getScheduleNote() == null || !cs.getScheduleNote().startsWith(MEAL_NOTE_PREFIX)) {
                 continue;
             }
 
             String mealType = cs.getScheduleNote().substring(MEAL_NOTE_PREFIX.length());
-            LocalTime mealTime = predictedTimes.get(mealType);
-            if (mealTime == null) {
-                continue;
-            }
-
             LocalDate entryDate = cs.getStartDatetime().toLocalDate();
+            String mealTimeStr = resolveEffectiveMealTime(caregiverId, mealType, entryDate);
+            LocalTime mealTime = LocalTime.parse(mealTimeStr, TIME_FMT);
+
             LocalDateTime newStart = entryDate.atTime(mealTime);
             cs.setStartDatetime(newStart);
             cs.setEndDatetime(newStart.plusHours(1));

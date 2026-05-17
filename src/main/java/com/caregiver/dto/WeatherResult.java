@@ -1,9 +1,13 @@
 package com.caregiver.dto;
 
+import com.caregiver.annotation.Translatable;
+
 public class WeatherResult {
 
     private Double temperature;
+    @Translatable
     private String weather;
+    @Translatable
     private String weatherDesc;
     private Integer aqi;
 

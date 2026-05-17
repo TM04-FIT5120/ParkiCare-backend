@@ -31,7 +31,7 @@ public class MedicationPlanNoteService {
                 .orElseThrow(() -> new RuntimeException("Reminder not found"));
         verifyPatientOwnership(plan.getPatientId(), caregiverId);
 
-        plan.setPlanNote(planNote.trim());
+        plan.setPlanNote(planNote != null ? planNote.trim() : null);
         medicationReminderRepository.save(plan);
 
         return new MedicationPlanNoteResponse(plan.getRemindId(), plan.getPlanNote());

@@ -2,6 +2,8 @@ package com.caregiver.advice;
 
 import com.caregiver.service.TranslationService;
 import jakarta.servlet.http.HttpServletRequest;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.MethodParameter;
 import org.springframework.http.MediaType;
 import org.springframework.http.converter.HttpMessageConverter;
@@ -15,6 +17,8 @@ import java.util.Map;
 @RestControllerAdvice
 public class TranslateResponseBodyAdvice implements ResponseBodyAdvice<Object> {
 
+    private static final Logger log = LoggerFactory.getLogger(TranslateResponseBodyAdvice.class);
+
     private final TranslationService translationService;
     private final HttpServletRequest request;
 
@@ -27,6 +31,15 @@ public class TranslateResponseBodyAdvice implements ResponseBodyAdvice<Object> {
     @Override
     public boolean supports(MethodParameter returnType,
                             Class<? extends HttpMessageConverter<?>> converterType) {
+        String path = request.getRequestURI();
+        if (path != null) {
+            if (path.startsWith("/api/foods")) {
+                return false;
+            }
+            if (path.startsWith("/api/recipe/history")) {
+                return false;
+            }
+        }
         return true;
     }
 
@@ -53,7 +66,15 @@ public class TranslateResponseBodyAdvice implements ResponseBodyAdvice<Object> {
             return body;
         }
 
-        translationService.translateObjectToTargetLanguage(body, lang);
+        if (!translationService.isTranslationAvailable()) {
+            return body;
+        }
+
+        try {
+            translationService.translateObjectToTargetLanguage(body, lang);
+        } catch (Exception ex) {
+            log.warn("Response translation skipped: {}", ex.getMessage());
+        }
 
         return body;
     }

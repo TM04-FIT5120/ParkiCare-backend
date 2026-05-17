@@ -4,8 +4,10 @@ import com.caregiver.dto.LoginRequest;
 import com.caregiver.dto.LoginResponse;
 import com.caregiver.dto.RegisterRequest;
 import com.caregiver.dto.RegisterResponse;
+import com.caregiver.dto.UpdateLanguageRequest;
 import com.caregiver.service.AuthService;
 import jakarta.validation.Valid;
+import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 @RestController
@@ -27,5 +29,14 @@ public class AuthController {
     @PostMapping("/login")
     public LoginResponse login(@Valid @RequestBody LoginRequest request) {
         return authService.login(request);
+    }
+
+    /** Persist UI language choice (also exposed under /api/caregiver/{id}/language). */
+    @PatchMapping("/caregiver/{id}/language")
+    public ResponseEntity<Void> updateLanguage(
+            @PathVariable Long id,
+            @Valid @RequestBody UpdateLanguageRequest request) {
+        authService.updateLanguage(id, request.getLanguage());
+        return ResponseEntity.noContent().build();
     }
 }

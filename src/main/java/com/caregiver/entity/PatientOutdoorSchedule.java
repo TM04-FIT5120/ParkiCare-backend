@@ -44,4 +44,10 @@ public class PatientOutdoorSchedule {
 
     @Column(name = "is_pinned", nullable = false)
     private Integer isPinned = 0;
+
+    @Column(name = "schedule_source", nullable = false, length = 20)
+    private String scheduleSource = "MANUAL";
+
+    @Column(name = "ai_medication_period", length = 10)
+    private String aiMedicationPeriod;
 }

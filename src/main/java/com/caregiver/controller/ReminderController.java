@@ -1,5 +1,6 @@
 package com.caregiver.controller;
 
+import com.caregiver.dto.AutoMedicationPlanRequest;
 import com.caregiver.dto.MedicationPlanRequest;
 import com.caregiver.dto.MedicationPlanResponse;
 import com.caregiver.entity.MedicationPlan;
@@ -7,8 +8,6 @@ import com.caregiver.service.MedicationPlanService;
 import com.caregiver.service.MedicationReminderService;
 import jakarta.validation.Valid;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.bind.annotation.RequestParam;
-import com.caregiver.dto.AutoMedicationPlanRequest;
 
 import java.time.LocalDate;
 import java.time.LocalTime;
@@ -31,15 +30,13 @@ public class ReminderController {
     }
 
     @PostMapping("/plan")
-    public MedicationPlan createMedicationPlan(
+    public MedicationPlanResponse createMedicationPlan(
             @Valid @RequestBody MedicationPlanRequest request) {
 
         LocalDate endDate = (request.getEndDate() != null && !request.getEndDate().isBlank())
                 ? LocalDate.parse(request.getEndDate())
                 : null;
 
-        // Parse every comma-separated time and create one MedicationPlan row per time,
-        // all sharing the same planId so they are treated as one medication group.
         List<LocalTime> adminTimes = Arrays.stream(request.getAdminTimes().split(","))
                 .map(String::trim)
                 .map(LocalTime::parse)
@@ -54,42 +51,48 @@ public class ReminderController {
                 LocalDate.parse(request.getStartDate()),
                 request.getPlanNote(),
                 request.getMealTiming(),
+                request.getAnchoredMeals(),
                 request.getQuantity(),
                 request.getIntakeMethod(),
                 endDate,
                 request.getRecurrence()
         );
-        // Return the first plan for frontend compatibility; all plans are persisted.
-        return plans.get(0);
+        return convertToResponse(plans.get(0));
     }
 
     @GetMapping("/patient/{patientId}")
-    public List<MedicationPlan> getPlansByPatient(@PathVariable Long patientId) {
-        return medicationPlanService.getPlansByPatient(patientId);
+    public List<MedicationPlanResponse> getPlansByPatient(@PathVariable Long patientId) {
+        return medicationPlanService.getPlansByPatient(patientId).stream()
+                .map(this::convertToResponse)
+                .toList();
     }
 
-    /** 当天覆盖日历的全部用药计划（is_valid 0/1；与事件推荐 medicationTimeList 同源）。 */
+    /** All medication plans covering today's calendar (is_valid 0/1). */
     @GetMapping("/patient/{patientId}/today-all")
-    public List<MedicationPlan> getTodayAllMedicationPlans(@PathVariable Long patientId) {
-        return medicationPlanService.getTodayAllPlansByPatient(patientId, LocalDate.now());
+    public List<MedicationPlanResponse> getTodayAllMedicationPlans(@PathVariable Long patientId) {
+        return medicationPlanService.getTodayAllPlansByPatient(patientId, LocalDate.now()).stream()
+                .map(this::convertToResponse)
+                .toList();
     }
 
     @PatchMapping("/confirm/{remindId}")
-    public MedicationPlan confirmReminder(@PathVariable Long remindId,
-                                          @RequestParam Long caregiverId) {
-        return medicationReminderService.confirmReminder(remindId, caregiverId);
+    public MedicationPlanResponse confirmReminder(@PathVariable Long remindId,
+                                                  @RequestParam Long caregiverId) {
+        return convertToResponse(medicationReminderService.confirmReminder(remindId, caregiverId));
     }
 
     @PatchMapping("/later/{remindId}")
-    public MedicationPlan snoozeReminder(@PathVariable Long remindId,
-                                         @RequestParam Long caregiverId) {
-        return medicationReminderService.snoozeReminder(remindId, caregiverId);
+    public MedicationPlanResponse snoozeReminder(@PathVariable Long remindId,
+                                                 @RequestParam Long caregiverId) {
+        return convertToResponse(medicationReminderService.snoozeReminder(remindId, caregiverId));
     }
 
     @GetMapping("/pending/{patientId}")
-    public List<MedicationPlan> getPendingReminders(@PathVariable Long patientId,
-                                                    @RequestParam Long caregiverId) {
-        return medicationReminderService.getPendingReminders(patientId, caregiverId);
+    public List<MedicationPlanResponse> getPendingReminders(@PathVariable Long patientId,
+                                                            @RequestParam Long caregiverId) {
+        return medicationReminderService.getPendingReminders(patientId, caregiverId).stream()
+                .map(this::convertToResponse)
+                .toList();
     }
 
     /**
@@ -98,8 +101,10 @@ public class ReminderController {
      * without data fields (FCM Web Push strips the data payload).
      */
     @GetMapping("/pending/caregiver/{caregiverId}")
-    public List<MedicationPlan> getPendingRemindersByCaregiver(@PathVariable Long caregiverId) {
-        return medicationReminderService.getPendingRemindersByCaregiver(caregiverId);
+    public List<MedicationPlanResponse> getPendingRemindersByCaregiver(@PathVariable Long caregiverId) {
+        return medicationReminderService.getPendingRemindersByCaregiver(caregiverId).stream()
+                .map(this::convertToResponse)
+                .toList();
     }
 
     @DeleteMapping("/{remindId}")
@@ -110,6 +115,7 @@ public class ReminderController {
     }
 
     private MedicationPlanResponse convertToResponse(MedicationPlan plan) {
+        if (plan == null) return null;
         return new MedicationPlanResponse(
                 plan.getRemindId(),
                 plan.getPatientId(),
@@ -129,19 +135,24 @@ public class ReminderController {
     }
 
     @GetMapping("/medicationPlan/now")
-    public List<MedicationPlan> getMedicationPlansNow() {
-        return medicationPlanService.getPlansRemindTimeNow();
+    public List<MedicationPlanResponse> getMedicationPlansNow() {
+        return medicationPlanService.getPlansRemindTimeNow().stream()
+                .map(this::convertToResponse)
+                .toList();
     }
 
     @GetMapping("/medicationPlan/plus5")
-    public List<MedicationPlan> getMedicationPlansPlus5() {
-        return medicationPlanService.getPlansRemindTimePlus5();
+    public List<MedicationPlanResponse> getMedicationPlansPlus5() {
+        return medicationPlanService.getPlansRemindTimePlus5().stream()
+                .map(this::convertToResponse)
+                .toList();
     }
 
     @PostMapping("/plan/auto")
-    public List<MedicationPlan> autoCreateMedicationPlan(
+    public List<MedicationPlanResponse> autoCreateMedicationPlan(
             @RequestBody AutoMedicationPlanRequest request) {
-        return medicationPlanService.autoCreateMedicationPlan(request);
+        return medicationPlanService.autoCreateMedicationPlan(request).stream()
+                .map(this::convertToResponse)
+                .toList();
     }
-
 }
