@@ -53,7 +53,7 @@ public class EventRecommendationService {
     private final ObjectMapper objectMapper = new ObjectMapper();
     private static final DateTimeFormatter TIME_FMT = DateTimeFormatter.ofPattern("HH:mm");
     private static final DateTimeFormatter DATETIME_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm");
-    /** 兼容模型返回的 6:00、09:15:00 等；严格 HH:mm 解析失败时不再整机默认成同一 06:00。 */
+    /** Handles model output times such as 6:00 or 09:15:00; when strict HH:mm parsing fails, no longer falls back to the same 06:00 for every entry. */
     private static final DateTimeFormatter[] AI_TIME_FORMATTERS = buildAiTimeFormatters();
     /** Allowed clock window for recommendation start times (aligned with caregiver daytime care). */
     private static final LocalTime REC_SLOT_START_INCLUSIVE = LocalTime.of(6, 0);
@@ -95,7 +95,7 @@ public class EventRecommendationService {
                 request.getCaregiverId(), patientId, now);
 
         LocalDate fromDate = now.toLocalDate().minusDays(14);
-        // 各 5 条：accept 取 score 最高；reject 取 score 最低；同分按 id 新在前。每条含反馈当时天气快照。
+        // 5 entries each: accept takes highest score; reject takes lowest score; ties broken by most recent id first. Each entry includes weather snapshot at feedback time.
         List<String> acceptHistoryList = userEventRecommendationLogRepository
                 .findTop5AcceptByScoreDesc(request.getCaregiverId(), "accept", fromDate)
                 .stream()
@@ -205,8 +205,9 @@ public class EventRecommendationService {
     }
 
     /**
-     * 当日「全天」用药提醒时刻（HH:mm），与 {@link MedicationPlanService#getTodayAllPlansByPatient} 一致；
-     * is_valid 0/1 均纳入（含已完成与未完成排程），不按当前时刻截断。
+     * Today's medication reminder times (HH:mm) for the full day, consistent with
+     * {@link MedicationPlanService#getTodayAllPlansByPatient}; both is_valid 0 and 1 are included
+     * (covering completed and pending plans), not truncated by the current time.
      */
     private List<String> buildMedicationTimeList(Long patientId, LocalDate today) {
         return medicationPlanService.getTodayAllPlansByPatient(patientId, today).stream()
@@ -219,7 +220,8 @@ public class EventRecommendationService {
     }
 
     /**
-     * 三餐：每条为「预测开餐 HH:mm」起固定 {@link #MEAL_BUSY_BLOCK_MINUTES} 分钟的占用区间（供 prompt 与避让）。
+     * Three meals: each entry is a busy block of {@link #MEAL_BUSY_BLOCK_MINUTES} minutes starting
+     * from the predicted meal start time HH:mm (used in the prompt and for overlap avoidance).
      */
     private List<String> buildMealBusyWindows(LocalDate day, String breakfastHm, String lunchHm, String dinnerHm) {
         List<String> out = new ArrayList<>();
@@ -287,7 +289,7 @@ public class EventRecommendationService {
         };
     }
 
-    /** 解析 AI 返回的开始时刻；失败时返回 empty（由调用方决定兜底）。 */
+    /** Parses the start time returned by the AI; returns empty on failure (caller decides the fallback). */
     private static Optional<LocalTime> parseFlexibleHm(String raw) {
         if (raw == null) {
             return Optional.empty();
@@ -326,71 +328,72 @@ public class EventRecommendationService {
                                List<String> rejectHistoryList) {
 
         String medNote = medicationTimeList.isEmpty()
-                ? "（当前为空列表：当日无覆盖日历的用药排程（含 is_valid 0/1）；所有条目的 period 须为 off。）"
-                : "（当前非空：列表含 is_valid 0/1 的当日排程时刻；必须按本章「用药与 period」计算 on/off，禁止在 remark 中声称无用药计划。）";
+                ? "(Current list is empty: no medication plans covering today's calendar exist (including is_valid 0/1); all entries must have period=off.)"
+                : "(Current list is non-empty: it contains today's scheduled times for is_valid 0/1; on/off must be calculated according to the \"Medication and Period\" section; remark must not claim there is no medication plan.)";
 
         return """
-                你是帕金森患者照护场景的「活动安排」生成助手。按章节执行；数据区数值以系统填充为准，不得臆造。
+                You are an activity scheduling assistant for Parkinson's patient care scenarios. Follow each section in order; values in the data section are system-filled and must not be fabricated.
 
-                【1. 输出形态】
-                - 只输出一个 JSON 对象，键名与文末 schema 完全一致；禁止 Markdown、代码围栏、前后解释文字。
-                - eventName、remark 等可读文本使用英文；remark 约 25～30 个英文单词。
-                - remark 中禁止出现与 startTime 同格式的具体钟点（如 14:17）；可用 early morning / late morning / afternoon / evening、medication on-window 等描述时段。
-                - remark 所描述的时段（morning/afternoon/evening）必须与 **该条 startTime** 在一天中的真实时段一致：例如 startTime 在 06:00–11:59 则不可用 "evening" 作为主描述。
-                - 共 5 条 eventRecommendations；durationMinutes 在 15～60（含边界）。
+                [1. Output Format]
+                - Output exactly one JSON object with key names matching the schema at the end; no Markdown, code fences, or explanatory text before or after.
+                - Human-readable fields such as eventName and remark must be in English; remark should be approximately 25–30 English words.
+                - remark must not contain specific clock times in the same format as startTime (e.g. 14:17); use descriptors such as early morning / late morning / afternoon / evening / medication on-window instead.
+                - The time-of-day descriptor in remark (morning/afternoon/evening) must match the actual time period of **that entry's startTime**: for example, if startTime is between 06:00 and 11:59, do not use "evening" as the primary descriptor.
+                - There must be exactly 5 eventRecommendations; durationMinutes must be between 15 and 60 inclusive.
 
-                【2. startTime 时间窗与排程间隔】
-                - 每条 startTime 为当天 24 小时制，须晚于下方 nowDateTime 的时钟时刻，且不早于 06:00、且不晚于 22:59（即开始时刻 < 23:00）。
-                - 建议统一为 HH:mm（如 09:30）；五条 startTime 必须**互不相同**。
-                - **严禁时段重合**：对任意两条推荐 A、B，若 A 的开始时间早于 B，则必须满足：B.startTime ≥ A.startTime + A.durationMinutes + **60 分钟**（即上一条活动结束后至少隔约 1 小时再开始下一条）。若因窗口过窄无法处处满足，允许最小间隔 45 分钟，但仍不得时间段重叠。
-                - 五条在可行时应**分散**在当天不同时段（如上午/下午/傍晚,或当天剩余不多就只推荐2条event），避免全部挤在 06:00 后极短时间内。
-                - **三餐占用（mealBusyWindows）**：数据区列出每餐「预测开餐时刻」起连续 **60 分钟**的**整段**时间（起止均为 yyyy-MM-dd HH:mm）。推荐活动的 [startTime, startTime+durationMinutes] 不得与该三餐任一段重叠；也不得仅压在「开餐点」而忽略后续用餐时长。
-                - **已有日程（userOccupiedTimeList）**：每条格式为 `渠道 | title="…": 开始 ~ 结束`；title 为该条日程的标题（居家/户外/照护者日程）。**这些 title 表示用户日历上已经存在、尚未结束的安排**。
-                - 新推荐的 eventName：禁止与任一已有 title **逐字相同**；禁止 **实质同类**（轻微改名、同义等）。**此约束优先于** 下文章节【5】【6】中「从 acceptHistoryList 逐字拷贝曾接受活动名」的规则。
-                - 避开 userOccupiedTimeList 中的整段区间（含时间重叠）；避开用药提醒点本身（不要在 remind 时刻安排活动开始）。
+                [2. startTime Window and Scheduling Interval]
+                - Each startTime is in 24-hour format for the current day, must be later than the clock time of nowDateTime below, no earlier than 06:00 and no later than 22:59 (i.e. startTime < 23:00).
+                - Use HH:mm format (e.g. 09:30); all five startTimes must be **distinct**.
+                - **Time overlap is strictly forbidden**: for any two recommendations A and B where A starts before B, B.startTime must be >= A.startTime + A.durationMinutes + **60 minutes** (at least ~1 hour after the previous activity ends before the next begins). If the window is too narrow to satisfy this everywhere, a minimum gap of 45 minutes is allowed, but time segments must never overlap.
+                - When feasible, the five entries should be **spread** across different parts of the day (e.g. morning/afternoon/evening; or if little time remains in the day, recommend only 2 events), avoiding clustering them all right after 06:00.
+                - **Meal busy windows (mealBusyWindows)**: the data section lists a continuous **60-minute** block starting from each meal's predicted start time (both endpoints in yyyy-MM-dd HH:mm). The activity interval [startTime, startTime+durationMinutes] must not overlap any of these three meal blocks; do not treat only the meal start point as blocked while ignoring the remaining meal duration.
+                - **Existing schedules (userOccupiedTimeList)**: each entry is formatted as `channel | title="...": start ~ end`; title is the name of that schedule entry (home care / outdoor / caregiver schedule). **These titles represent arrangements already on the user's calendar that have not yet ended**.
+                - A new recommendation's eventName must not be **word-for-word identical** to any existing title, and must not be **substantively the same** (minor renaming, synonyms, etc.). **This constraint takes priority over** the rule in sections [5] and [6] below about copying accepted activity names verbatim from acceptHistoryList.
+                - Avoid the full time spans in userOccupiedTimeList (including time overlaps); avoid the medication reminder times themselves (do not schedule an activity to start at a remind time).
 
-                【3. 天气与 outdoor】
-                - type 只能是 home_care 或 outdoor。
-                - 结合下方 aqi、weather、temperature：恶劣天气、AQI 差、过冷或过热时不得安排 outdoor，应安排 home_care。
-                - 天气与 AQI 适宜时，5 条中应包含适量 outdoor（若规则 2、4 仍允许该时段）。
+                [3. Weather and Outdoor]
+                - type may only be home_care or outdoor.
+                - Based on the aqi, weather, and temperature values below: in bad weather, poor AQI, extreme cold, or extreme heat, do not schedule outdoor activities; use home_care instead.
+                - When weather and AQI are suitable, the 5 entries should include an appropriate number of outdoor activities (provided sections [2] and [4] still allow those time slots).
 
-                【4. 用药与 period（与系统后处理一致，必须严格遵守）】
+                [4. Medication and Period (must strictly match system post-processing)]
                 %s
-                - 对每个用药提醒时刻 D（HH:mm，来自 medicationTimeList；列表含 is_valid 为 0 与 1 的排程，含已完成与未完成对应的提醒时刻）：
-                  **on 窗口** = 从 D 起满 %d 分钟之后，到满 %d 分钟之前（左闭右开，即 [D+%d min, D+%d min)）。
-                  若某条推荐的 startTime（与 nowDateTime 同一日历日）落在**任意一个** on 窗口内，则该条 period 必须为 **on**；不得标为 off。
-                - 若 medicationTimeList 为空：全部 5 条 period 必须为 **off**，remark 可说明当日无排程用药提醒；不得虚构用药时刻。
-                - **若 medicationTimeList 非空（当日有服药排程）**：除上述规则外还须同时满足：
-                  (a) 在 now 之后、且与规则【2】不冲突的前提下，**优先保证至少 3 条** startTime 落在某个 on 窗口内且 period 均为 **on**；若当日剩余可排 on 窗口客观上不足 3 个，则**所有**仍能落入 on 窗口的推荐必须 period=**on**，且 on 条数**不得少于 2**；
-                  (b) 适合作为「开期」活动的条目（如轻度步态/伸展/户外快走等）应**优先**排进 on 窗口，并按【2】与前后活动留出约 1 小时间隔；
-                  (c) remark 不得写「no medication」「without medication schedule」等否认列表的措辞。
+                - For each medication reminder time D (HH:mm, from medicationTimeList; list includes schedules with is_valid 0 and 1, covering both completed and pending reminder times):
+                  **on-window** = from D plus %d minutes (inclusive) to D plus %d minutes (exclusive) (half-open interval [D+%d min, D+%d min)).
+                  If a recommendation's startTime (on the same calendar day as nowDateTime) falls within **any** on-window, that entry's period must be **on**; it must not be labelled off.
+                - If medicationTimeList is empty: all 5 entries must have period **off**; remark may note that no medication reminders are scheduled today; do not fabricate medication times.
+                - **If medicationTimeList is non-empty (medication scheduled today)**: in addition to the above, the following must also be satisfied:
+                  (a) After now and without conflicting with section [2], **prioritise at least 3** startTimes falling within an on-window with period **on**; if fewer than 3 on-window slots remain in the day, **all** recommendations that can still fall in an on-window must have period=**on**, and the number of on entries **must not be fewer than 2**;
+                  (b) Entries suitable for "on" activities (e.g. light gait exercises / stretching / brisk outdoor walks) should be **preferentially** scheduled within on-windows, with roughly 1-hour gaps before and after as required by section [2];
+                  (c) remark must not contain phrases such as "no medication" or "without medication schedule" that deny the existence of the list.
 
-                【5. 历史反馈】
-                - acceptHistoryList / rejectHistoryList 为系统写入的字符串列表（含反馈当时的 AQI/天气/温度快照）。
-                - 「从 acceptHistoryList 复用 eventName」**仅允许**在：该名称**未**出现在 userOccupiedTimeList 任一条的 title 中、且与已有 title **不构成实质同类** 时。若曾接受名与某 occupied title 相同（如都曾出现 "Short Park Walk"），**必须视为日程已占用**：不得再输出该同名推荐，应改用 acceptHistoryList 中其它条目或全新名称。
-                - 在相近天气条件下，优先复用**未与已有日程冲突**的曾接受活动名。
-                - rejectHistoryList 中出现的 eventName= 后的名称：禁止输出完全同名；禁止实质相同仅轻微改名。
+                [5. Historical Feedback]
+                - acceptHistoryList / rejectHistoryList are system-written string lists (including AQI/weather/temperature snapshots at the time of feedback).
+                - Reusing an eventName from acceptHistoryList is **only permitted** when that name does **not** appear in any title in userOccupiedTimeList and is **not substantively the same** as any existing title. If a previously accepted name matches an occupied title (e.g. both contain "Short Park Walk"), it **must be treated as already scheduled**: do not output that same-name recommendation again; use another entry from acceptHistoryList or a completely new name.
+                - Under similar weather conditions, prefer reusing previously accepted activity names **that do not conflict with existing schedules**.
+                - For names appearing after eventName= in rejectHistoryList: do not output an identical name; do not output a substantively identical name with only minor renaming.
 
-                【6. eventName】
-                - **优先级（必读）**：先生成候选名，再对照 userOccupiedTimeList 每一条 title：凡 **逐字相同** 或 **用户可视为同一活动**（含仅加 Short/Light/Gentle 等前缀、缩写变体），**一律废弃该候选**，改选其它名称——**即使** acceptHistoryList 明确要求对该字符串逐字拷贝也不例外。
-                - 若复用曾接受活动且满足上一条的「无日程冲突」：eventName 可与 acceptHistoryList 某条里 "eventName=" 之后、到 " |" 之前的片段逐字一致。
-                - 其余情况使用新的清晰英文名称，且仍不得与任一 occupied title 冲突。
+                [6. eventName]
+                - **Priority (must read)**: generate a candidate name first, then check it against every title in userOccupiedTimeList: if it is **word-for-word identical** or **can be seen by the user as the same activity** (including variants with only a Short/Light/Gentle prefix or abbreviation), **discard that candidate** and choose a different name — **even if** acceptHistoryList explicitly requests that exact string to be copied verbatim.
+                - If reusing a previously accepted activity that satisfies the "no schedule conflict" condition above: eventName may be word-for-word identical to the segment after "eventName=" and before " |" in some entry of acceptHistoryList.
+                - In all other cases, use a new, clear English name that still does not conflict with any occupied title.
+                - **Time-of-day words are strictly forbidden in eventName**: do not include morning, afternoon, evening, night, AM, PM, dawn, dusk, midday, noon, or any equivalent time-of-day descriptor as part of the activity name. The user may reschedule the activity to a different time, so a time-anchored name would become misleading. Describe the activity itself (e.g. "Park Walk", "Stretching Session", "Breathing Exercises") rather than when it happens.
 
-                【7. reject 精确匹配】
-                - 禁止与 rejectHistoryList 中任一 eventName= 段逐字相同。
+                [7. Reject Exact Match]
+                - Do not output a name word-for-word identical to any eventName= segment in rejectHistoryList.
 
-                %s：
+                %s:
                 nowDateTime: %s
                 aqi: %s
                 weather: %s
                 temperature: %s
-                mealBusyWindows（早餐/午餐/晚餐：自预测开餐时刻起各连续 60 分钟，yyyy-MM-dd HH:mm ~ …）: %s
-                medicationTimeList（当日「全天」用药 remindTime，HH:mm；is_valid 含 0/1）: %s
-                userOccupiedTimeList（已有日程：含渠道与 title，便于避免与同类活动重复）: %s
-                acceptHistoryList（接受反馈+当时环境快照，动态）: %s
-                rejectHistoryList（拒绝反馈+当时环境快照，动态）: %s
+                mealBusyWindows (breakfast/lunch/dinner: each a continuous 60-minute block from the predicted meal start time, yyyy-MM-dd HH:mm ~ ...): %s
+                medicationTimeList (today's medication remindTime for the full day, HH:mm; is_valid includes 0 and 1): %s
+                userOccupiedTimeList (existing schedules: includes channel and title to avoid duplicating similar activities): %s
+                acceptHistoryList (accepted feedback + environment snapshot at time of feedback, dynamic): %s
+                rejectHistoryList (rejected feedback + environment snapshot at time of feedback, dynamic): %s
 
-                必须严格按下述 JSON 结构返回（键名保持不变）：
+                Return strictly the following JSON structure (key names unchanged):
                 {
                   "eventRecommendations": [
                     {
@@ -409,7 +412,7 @@ public class EventRecommendationService {
                 ON_WINDOW_END_AFTER_DOSE_MINUTES,
                 ON_WINDOW_START_AFTER_DOSE_MINUTES,
                 ON_WINDOW_END_AFTER_DOSE_MINUTES,
-                "动态业务数据（以下每项值由系统自动填充，请勿臆造）",
+                "Dynamic business data (each value below is automatically filled by the system; do not fabricate)",
                 now.format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm")),
                 weatherResult.getAqi(),
                 safe(weatherResult.getWeather()),
@@ -422,7 +425,7 @@ public class EventRecommendationService {
         );
     }
 
-    // Normalize AI output and enforce basic bounds; period 与用药 on 窗口由系统校正。
+    // Normalize AI output and enforce basic bounds; period and medication on-window are corrected by the system.
     private List<EventRecommendationItem> normalizeRecommendations(List<EventRecommendationItem> items,
                                                                    LocalDateTime now,
                                                                    List<String> medicationHmms) {
@@ -468,7 +471,8 @@ public class EventRecommendationService {
     }
 
     /**
-     * 若连续两条 startTime 相同或逆序，后一条顺延，避免五条都压在 06:00。
+     * If two consecutive startTimes are identical or out of order, the later one is shifted forward
+     * to avoid all five entries clustering at 06:00.
      */
     private static void ensureStrictlyIncreasingByStartTime(List<EventRecommendationItem> list) {
         LocalTime prev = null;
@@ -494,7 +498,8 @@ public class EventRecommendationService {
     }
 
     /**
-     * 与 prompt 【4】一致：对每个服药时刻 D，on 窗口为 [D+60min, D+240min)；startTime 落在任一窗口内则 on。
+     * Consistent with prompt section [4]: for each medication dose time D, the on-window is
+     * [D+60min, D+240min); any startTime falling within any such window is marked on.
      */
     private static String inferMedicationPeriodForStart(LocalTime startTime,
                                                         LocalDate scheduleDay,
@@ -519,7 +524,7 @@ public class EventRecommendationService {
         return "off";
     }
 
-    /** Clamp HH:mm into [06:00, 23:00), and ensure interpreted start is after {@code now}. 次日回退时用 orderIndex 错开槽位。 */
+    /** Clamp HH:mm into [06:00, 23:00), and ensure interpreted start is after {@code now}. When falling back to the next day, use orderIndex to stagger slot positions. */
     private String enforceDaytimeRecommendationWindow(String startTimeStr, LocalDateTime now, int orderIndex) {
         LocalTime t = parseFlexibleHm(startTimeStr).orElse(null);
         if (t == null) {
@@ -608,7 +613,7 @@ public class EventRecommendationService {
         return text == null ? "" : text.trim();
     }
 
-    /** 一条反馈日志的可读快照，供 prompt 说明「在何种天气/AQI/温度下」接受或拒绝。 */
+    /** A human-readable snapshot of one feedback log entry, used in the prompt to describe the weather/AQI/temperature conditions under which the event was accepted or rejected. */
     private String formatHistoryLine(UserEventRecommendationLog log) {
         String name = safe(log.getEventName());
         Integer aqi = log.getAqi();
