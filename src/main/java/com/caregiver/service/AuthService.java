@@ -45,9 +45,10 @@ public class AuthService {
         );
     }
 
-    public LoginResponse login(LoginRequest request) {
+    public LoginResponse loginName(LoginRequest request) {
+
         Optional<Caregiver> optionalCaregiver =
-                caregiverRepository.findByUniqueId(request.getUniqueId().trim());
+                caregiverRepository.findByNickname(request.getNickname().trim());
 
         if (optionalCaregiver.isEmpty()) {
             throw new RuntimeException("User not found");

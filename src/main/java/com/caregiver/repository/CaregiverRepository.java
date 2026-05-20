@@ -16,4 +16,7 @@ public interface CaregiverRepository extends JpaRepository<Caregiver, Long> {
 
     @Query(value = "SELECT MAX(CAST(unique_id AS UNSIGNED)) FROM caregiver", nativeQuery = true)
     Long findMaxUniqueIdNumber();
+
+    Optional<Caregiver> findByNickname(String nickname);
+
 }
