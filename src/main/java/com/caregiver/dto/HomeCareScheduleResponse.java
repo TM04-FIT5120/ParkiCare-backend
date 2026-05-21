@@ -12,6 +12,7 @@ public class HomeCareScheduleResponse {
 
     private Long id;
     private Long patientId;
+    @Translatable
     private String homeCareTitle;
     private String startDatetime;
     private String endDatetime;

@@ -116,4 +116,18 @@ public interface MedicationReminderRepository extends JpaRepository<MedicationPl
             @Param("caregiverId") Long caregiverId,
             @Param("today") LocalDate today);
 
+    /**
+     * Find active, unconfirmed plans whose adminTime crossed the overdue threshold
+     * (cutoffDate/cutoffTime = now minus grace period) and are not yet flagged overdue.
+     * Covers remindStatus 0 (never fired), 1 (pending), and 3 (snoozed).
+     */
+    @Query("SELECT m FROM MedicationPlan m WHERE m.isValid = 1 " +
+           "AND m.remindStatus IN (0, 1, 3) " +
+           "AND m.isOverdue = 0 " +
+           "AND (m.startDate < :cutoffDate " +
+           "     OR (m.startDate = :cutoffDate AND m.adminTime <= :cutoffTime))")
+    List<MedicationPlan> findOverdueEligible(
+            @Param("cutoffDate") LocalDate cutoffDate,
+            @Param("cutoffTime") LocalTime cutoffTime);
+
 }

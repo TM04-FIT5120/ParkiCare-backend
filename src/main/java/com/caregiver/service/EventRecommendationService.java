@@ -23,6 +23,8 @@ import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.DayOfWeek;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.LocalTime;
@@ -58,9 +60,9 @@ public class EventRecommendationService {
     /** Allowed clock window for recommendation start times (aligned with caregiver daytime care). */
     private static final LocalTime REC_SLOT_START_INCLUSIVE = LocalTime.of(6, 0);
     private static final LocalTime REC_SLOT_END_EXCLUSIVE = LocalTime.of(23, 0);
-    /** Simplified PD medication-related "on" window: from (dose + 1h) inclusive to (dose + 4h) exclusive. Must match prompt section 6. */
+    /** Simplified PD medication-related "on" window: from (dose + 1h) inclusive to (dose + 2h) exclusive. Must match prompt section 6. */
     private static final int ON_WINDOW_START_AFTER_DOSE_MINUTES = 60;
-    private static final int ON_WINDOW_END_AFTER_DOSE_MINUTES = 240;
+    private static final int ON_WINDOW_END_AFTER_DOSE_MINUTES = 120;
     /** Predicted meal start times extend as busy blocks for prompt / overlap avoidance. */
     private static final int MEAL_BUSY_BLOCK_MINUTES = 60;
 
@@ -130,8 +132,12 @@ public class EventRecommendationService {
                 throw new RuntimeException("AI returned empty recommendations");
             }
 
+            List<String> rawMealHmms = new ArrayList<>();
+            if (breakfastTime != null) rawMealHmms.add(breakfastTime);
+            if (lunchTime != null) rawMealHmms.add(lunchTime);
+            if (dinnerTime != null) rawMealHmms.add(dinnerTime);
             List<EventRecommendationItem> normalized = normalizeRecommendations(
-                    response.getEventRecommendations(), now, medicationTimeList);
+                    response.getEventRecommendations(), now, medicationTimeList, rawMealHmms);
             if (normalized.size() != 5) {
                 throw new RuntimeException("AI must return exactly 5 recommendations");
             }
@@ -256,6 +262,9 @@ public class EventRecommendationService {
                 occupied.add(formatOccupiedSlot(
                         item.getStartDatetime(), item.getEndDatetime(), "home_care", item.getHomeCareTitle()));
             }
+            // Also include today's occurrence for recurring events whose first occurrence is in the past
+            addRecurringTodayOccurrence(occupied, item.getStartDatetime(), item.getEndDatetime(),
+                    item.getRecurrence(), "home_care", item.getHomeCareTitle(), now);
         }
 
         List<PatientOutdoorSchedule> outdoors = patientOutdoorScheduleRepository
@@ -265,6 +274,8 @@ public class EventRecommendationService {
                 occupied.add(formatOccupiedSlot(
                         item.getStartDatetime(), item.getEndDatetime(), "outdoor", item.getOutdoorTitle()));
             }
+            addRecurringTodayOccurrence(occupied, item.getStartDatetime(), item.getEndDatetime(),
+                    item.getRecurrence(), "outdoor", item.getOutdoorTitle(), now);
         }
 
         List<CaregiverSchedule> caregiverSchedules = caregiverScheduleRepository
@@ -274,9 +285,38 @@ public class EventRecommendationService {
                 occupied.add(formatOccupiedSlot(
                         item.getStartDatetime(), item.getEndDatetime(), "caregiver_schedule", item.getScheduleTitle()));
             }
+            addRecurringTodayOccurrence(occupied, item.getStartDatetime(), item.getEndDatetime(),
+                    item.getRecurrence(), "caregiver_schedule", item.getScheduleTitle(), now);
         }
 
         return occupied.stream().distinct().sorted().toList();
+    }
+
+    // For recurring events whose stored first-occurrence endDatetime is in the past, generate
+    // today's occurrence so the AI prompt includes it as a blocked slot.
+    private void addRecurringTodayOccurrence(List<String> occupied,
+                                              LocalDateTime startDt, LocalDateTime endDt,
+                                              String recurrence, String channel, String title,
+                                              LocalDateTime now) {
+        if (recurrence == null || recurrence.isBlank() || "none".equalsIgnoreCase(recurrence.trim())) return;
+        if (startDt == null || endDt == null) return;
+
+        LocalDate today = now.toLocalDate();
+        LocalDateTime todayStart = today.atTime(startDt.toLocalTime());
+        LocalDateTime todayEnd = todayStart.plus(Duration.between(startDt, endDt));
+
+        if (!todayEnd.isAfter(now)) return; // today's occurrence has already ended
+
+        boolean appliesToday = switch (recurrence.trim().toLowerCase()) {
+            case "daily" -> true;
+            case "weekdays" -> today.getDayOfWeek().getValue() <= DayOfWeek.FRIDAY.getValue();
+            case "weekly" -> today.getDayOfWeek() == startDt.getDayOfWeek();
+            default -> false;
+        };
+
+        if (appliesToday) {
+            occupied.add(formatOccupiedSlot(todayStart, todayEnd, channel, title));
+        }
     }
 
     private static DateTimeFormatter[] buildAiTimeFormatters() {
@@ -337,16 +377,15 @@ public class EventRecommendationService {
                 [1. Output Format]
                 - Output exactly one JSON object with key names matching the schema at the end; no Markdown, code fences, or explanatory text before or after.
                 - Human-readable fields such as eventName and remark must be in English; remark should be approximately 25–30 English words.
-                - remark must not contain specific clock times in the same format as startTime (e.g. 14:17); use descriptors such as early morning / late morning / afternoon / evening / medication on-window instead.
-                - The time-of-day descriptor in remark (morning/afternoon/evening) must match the actual time period of **that entry's startTime**: for example, if startTime is between 06:00 and 11:59, do not use "evening" as the primary descriptor.
+                - remark must not contain specific clock times in the same format as startTime (e.g. 14:17). **Time-of-day words are strictly forbidden in remark**: do not include morning, afternoon, evening, night, AM, PM, early morning, late morning, midday, noon, dawn, dusk, or meal names such as breakfast, lunch, or dinner. Describe what the activity involves and why it benefits the patient — not when it happens.
                 - There must be exactly 5 eventRecommendations; durationMinutes must be between 15 and 60 inclusive.
 
                 [2. startTime Window and Scheduling Interval]
-                - Each startTime is in 24-hour format for the current day, must be later than the clock time of nowDateTime below, no earlier than 06:00 and no later than 22:59 (i.e. startTime < 23:00).
+                - Each startTime is in 24-hour format for the current day, must be later than the clock time of nowDateTime below, no earlier than 06:00 and no later than 21:59 (i.e. startTime < 22:00).
                 - Use HH:mm format (e.g. 09:30); all five startTimes must be **distinct**.
                 - **Time overlap is strictly forbidden**: for any two recommendations A and B where A starts before B, B.startTime must be >= A.startTime + A.durationMinutes + **60 minutes** (at least ~1 hour after the previous activity ends before the next begins). If the window is too narrow to satisfy this everywhere, a minimum gap of 45 minutes is allowed, but time segments must never overlap.
                 - When feasible, the five entries should be **spread** across different parts of the day (e.g. morning/afternoon/evening; or if little time remains in the day, recommend only 2 events), avoiding clustering them all right after 06:00.
-                - **Meal busy windows (mealBusyWindows)**: the data section lists a continuous **60-minute** block starting from each meal's predicted start time (both endpoints in yyyy-MM-dd HH:mm). The activity interval [startTime, startTime+durationMinutes] must not overlap any of these three meal blocks; do not treat only the meal start point as blocked while ignoring the remaining meal duration.
+                - **Meal busy windows (mealBusyWindows) — hard constraint**: the data section lists a continuous **60-minute** block starting from each meal's predicted start time (both endpoints in yyyy-MM-dd HH:mm). The full activity interval [startTime, startTime+durationMinutes] must not overlap any of these three meal blocks — not even partially. Do not treat only the meal start point as blocked while ignoring the remaining meal duration. This constraint is enforced by the system after generation: any suggestion that overlaps a meal window will have its startTime shifted to after the meal window ends, which may disrupt the spacing between your suggestions. Avoid this by scheduling activities only in gaps between meal windows.
                 - **Existing schedules (userOccupiedTimeList)**: each entry is formatted as `channel | title="...": start ~ end`; title is the name of that schedule entry (home care / outdoor / caregiver schedule). **These titles represent arrangements already on the user's calendar that have not yet ended**.
                 - A new recommendation's eventName must not be **word-for-word identical** to any existing title, and must not be **substantively the same** (minor renaming, synonyms, etc.). **This constraint takes priority over** the rule in sections [5] and [6] below about copying accepted activity names verbatim from acceptHistoryList.
                 - Avoid the full time spans in userOccupiedTimeList (including time overlaps); avoid the medication reminder times themselves (do not schedule an activity to start at a remind time).
@@ -428,7 +467,8 @@ public class EventRecommendationService {
     // Normalize AI output and enforce basic bounds; period and medication on-window are corrected by the system.
     private List<EventRecommendationItem> normalizeRecommendations(List<EventRecommendationItem> items,
                                                                    LocalDateTime now,
-                                                                   List<String> medicationHmms) {
+                                                                   List<String> medicationHmms,
+                                                                   List<String> mealTimeHmms) {
         LocalDate scheduleDay = now.toLocalDate();
         List<EventRecommendationItem> list = items.stream()
                 .filter(i -> i.getEventName() != null && !i.getEventName().isBlank())
@@ -463,11 +503,65 @@ public class EventRecommendationService {
             i.setStartTime(enforceDaytimeRecommendationWindow(i.getStartTime(), now, idx));
         }
         ensureStrictlyIncreasingByStartTime(list);
+        // Deterministic enforcement: shift any suggestion overlapping a meal window to after it ends
+        resolveMealOverlaps(list, mealTimeHmms, now);
         for (EventRecommendationItem i : list) {
             LocalTime st = parseFlexibleHm(i.getStartTime()).orElse(now.toLocalTime());
             i.setPeriod(inferMedicationPeriodForStart(st, scheduleDay, medicationHmms));
         }
         return list;
+    }
+
+    /**
+     * Shifts any suggestion whose [startTime, startTime+durationMinutes] interval overlaps a meal
+     * busy window to start immediately after that window ends. Repeats until stable (handles
+     * cascading: a shift into a later meal triggers another shift), then re-sorts and de-duplicates.
+     */
+    private void resolveMealOverlaps(List<EventRecommendationItem> items,
+                                     List<String> mealTimeHmms,
+                                     LocalDateTime now) {
+        List<LocalTime[]> mealRanges = mealTimeHmms.stream()
+                .map(hmm -> parseFlexibleHm(hmm).orElse(null))
+                .filter(t -> t != null)
+                .map(t -> new LocalTime[]{t, t.plusMinutes(MEAL_BUSY_BLOCK_MINUTES)})
+                .sorted(Comparator.comparing(r -> r[0]))
+                .toList();
+
+        if (mealRanges.isEmpty()) return;
+
+        // Repeat until stable; at most one pass per meal window handles all cascading cases
+        for (int pass = 0; pass <= mealRanges.size(); pass++) {
+            boolean changed = false;
+            for (EventRecommendationItem item : items) {
+                LocalTime start = parseFlexibleHm(item.getStartTime()).orElse(null);
+                if (start == null) continue;
+                int duration = item.getDurationMinutes() != null ? item.getDurationMinutes() : 30;
+                LocalTime end = start.plusMinutes(duration);
+
+                for (LocalTime[] range : mealRanges) {
+                    LocalTime mealStart = range[0];
+                    LocalTime mealEnd   = range[1];
+                    // Overlap condition: start < mealEnd AND mealStart < activityEnd
+                    if (start.isBefore(mealEnd) && mealStart.isBefore(end)) {
+                        LocalTime shifted = clampToRecommendationClockWindowStatic(mealEnd);
+                        // Keep it after 'now' as well
+                        if (LocalDateTime.of(now.toLocalDate(), shifted).isBefore(now)) {
+                            shifted = clampToRecommendationClockWindowStatic(
+                                    now.toLocalTime().plusMinutes(1).withSecond(0).withNano(0));
+                        }
+                        item.setStartTime(shifted.format(TIME_FMT));
+                        start = shifted;
+                        end   = start.plusMinutes(duration);
+                        changed = true;
+                    }
+                }
+            }
+            if (!changed) break;
+        }
+
+        // Re-sort and de-duplicate after shifts may have changed relative order
+        items.sort(Comparator.comparing(i -> parseFlexibleHm(i.getStartTime()).orElse(LocalTime.MIDNIGHT)));
+        ensureStrictlyIncreasingByStartTime(items);
     }
 
     /**
@@ -499,7 +593,7 @@ public class EventRecommendationService {
 
     /**
      * Consistent with prompt section [4]: for each medication dose time D, the on-window is
-     * [D+60min, D+240min); any startTime falling within any such window is marked on.
+     * [D+60min, D+120min); any startTime falling within any such window is marked on.
      */
     private static String inferMedicationPeriodForStart(LocalTime startTime,
                                                         LocalDate scheduleDay,
