@@ -125,6 +125,22 @@ public class MedicationReminderScheduler {
             plan.setObservationNotified(1);
             medicationReminderRepository.save(plan);
         }
+
+        // --- 4. Mark overdue reminders (30-minute grace period after adminTime) ---
+        LocalDateTime overdueThreshold = LocalDateTime.now().minusMinutes(30);
+        List<MedicationPlan> overdueEligible = medicationReminderRepository
+                .findOverdueEligible(overdueThreshold.toLocalDate(), overdueThreshold.toLocalTime());
+
+        if (!overdueEligible.isEmpty()) {
+            log.info("[Scheduler] Marking {} reminder(s) as overdue", overdueEligible.size());
+        }
+
+        for (MedicationPlan plan : overdueEligible) {
+            log.info("[Scheduler] remindId={} marked overdue (adminTime={} startDate={} status={})",
+                    plan.getRemindId(), plan.getAdminTime(), plan.getStartDate(), plan.getRemindStatus());
+            plan.setIsOverdue(1);
+            medicationReminderRepository.save(plan);
+        }
     }
 
     private Long getCaregiverId(Long patientId) {

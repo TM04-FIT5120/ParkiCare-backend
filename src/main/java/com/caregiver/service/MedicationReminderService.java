@@ -35,6 +35,7 @@ public class MedicationReminderService {
         verifyPatientOwnership(plan.getPatientId(), caregiverId);
 
         plan.setRemindStatus(2); // 2 = completed / confirmed
+        plan.setIsOverdue(0);    // clear overdue flag on confirmation
         // plan.setIsValid(0);      // completed, no longer pending
         // Keep isValid unchanged so popup confirm does not deactivate the row.
         // Scheduler will not re-fire this row because due query only picks remindStatus = 0.

@@ -18,7 +18,6 @@ public class DrugResponse {
 
     private Long drugId;
 
-    @Translatable
     private String drugName;
 
     private BigDecimal price;
